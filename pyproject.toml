@@ -1,0 +1,17 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "sigmatcher"
+authors = [{name = "Ori Perry", email = "oriori1703@gmail.com"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+classifiers = ["License :: OSI Approved :: MIT License"]
+dynamic = ["version"]
+description = "Write signatures to automatically match java classes and methods between version"
+
+[project.urls]
+Documentation = "https://github.com/oriori1703/sigmatcher#readme"
+Issues = "https://github.com/oriori1703/sigmatcher/issues"
+Source = "https://github.com/oriori1703/sigmatcher"
