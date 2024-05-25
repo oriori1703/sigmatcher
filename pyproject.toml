@@ -13,6 +13,8 @@ description = "Write signatures to automatically match java classes and methods 
 
 dependencies = [
     "typer >= 0.12.3",
+    "pydantic",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +35,7 @@ target-version = "py38"
 src = ["src"]
 
 [tool.ruff.lint]
-select = [
+extend-select = [
     "F", # pyflakes
     "E", # pycodestyle
     "I", # isort
@@ -47,6 +49,10 @@ select = [
     "TID", # flake8-tidy-imports
     "PTH", # flake8-use-pathlib
     "ANN", # flake8-annotations
+]
+
+extend-ignore = [
+    "SIM108"
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]
