@@ -2,8 +2,14 @@ import hashlib
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
-from typing import Annotated, Dict, List, Optional, Set, Tuple, TypeAlias, Union
+from typing import Dict, List, Literal, Optional, Set, Tuple, TypeAlias, Union
+
+if sys.version_info < (3, 9):
+    from typing_extensions import Annotated
+else:
+    from typing import Annotated
 
 import pydantic
 import rich
@@ -14,7 +20,31 @@ from sigmatcher import __version__
 
 app = typer.Typer()
 
-Signature: TypeAlias = Union[re.Pattern[str], Dict[re.Pattern[str], int]]
+
+class BaseRegexSignature(pydantic.BaseModel):
+    signature: re.Pattern[str]
+    count: int = 1
+
+    def check(self, directory: Path) -> List[Path]:
+        return [path for path, match_count in rip_regex(self.signature, directory).items() if match_count == self.count]
+
+
+class RegexSignature(BaseRegexSignature):
+    type: Literal["regex"] = "regex"
+
+
+class TreeSitterSignature(pydantic.BaseModel):
+    signature: str
+    count: int = 1
+    type: Literal["treesitter"] = "treesitter"
+
+    def check(self, directory: Path) -> List[Path]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
+
+Signature: TypeAlias = Annotated[
+    Union[RegexSignature, GlobSignature, TreeSitterSignature], pydantic.Field(discriminator="type")
+]
 
 
 class FieldDefinition(pydantic.BaseModel):
@@ -40,7 +70,7 @@ class Definitions(pydantic.BaseModel):
 
 
 def parse_rg_line(line: str) -> Tuple[Path, int]:
-    path, count = line.split(":")
+    path, _, count = line.rpartition(":")
     return Path(path), int(count)
 
 
@@ -59,21 +89,18 @@ def rip_regex(pattern: Union[str, re.Pattern[str]], unpacked_path: Path) -> Dict
     return dict(parse_rg_line(line) for line in process.stdout.splitlines())
 
 
-def is_matching(signature: Signature, unpacked_path: Path) -> List[Path]:
-    if isinstance(signature, dict):
-        pattern, count = next(iter(signature.items()))
-    else:
-        pattern = signature
-        count = 1
-
-    return [path for path, match_count in rip_regex(pattern, unpacked_path).items() if match_count == count]
-
-
 def find_class_matches(class_def: ClassDefinition, unpacked_path: Path) -> Set[Path]:
-    matches: Set[Path] = set(is_matching(class_def.signatures[0], unpacked_path))
-    for signature in class_def.signatures[1:]:
-        matches.difference_update(is_matching(signature, unpacked_path))
-    return matches
+    whitelist_matches: Set[Path] = set()
+    blacklist_matches: Set[Path] = set()
+
+    for signature in class_def.signatures:
+        matching = signature.check(unpacked_path)
+        if signature.count == 0:
+            blacklist_matches.update(matching)
+        else:
+            whitelist_matches.update(matching)
+    whitelist_matches.difference_update(blacklist_matches)
+    return whitelist_matches
 
 
 def version_callback(value: bool) -> None:
@@ -109,13 +136,13 @@ def analyze(
     ] = "apktool",
 ) -> None:
     with signatures.open("r") as f:
-        parsed_signatures = Definitions(**yaml.safe_load(f))
+        parsed_definitions = Definitions(**yaml.safe_load(f))
 
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = Path(apk_hash)
     if not unpacked_path.exists():
         subprocess.run([apktool, "decode", apk, "--output", unpacked_path])
-    results = {class_def.name: find_class_matches(class_def, unpacked_path) for class_def in parsed_signatures.defs}
+    results = {class_def.name: find_class_matches(class_def, unpacked_path) for class_def in parsed_definitions.defs}
     print(results)
 
 
