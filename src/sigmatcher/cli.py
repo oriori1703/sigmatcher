@@ -1,3 +1,4 @@
+import fnmatch
 import hashlib
 import re
 import shutil
@@ -31,6 +32,17 @@ class BaseRegexSignature(pydantic.BaseModel):
 
 class RegexSignature(BaseRegexSignature):
     type: Literal["regex"] = "regex"
+
+
+class GlobSignature(BaseRegexSignature):
+    type: Literal["glob"] = "glob"
+
+    @pydantic.field_validator("signature", mode="before")
+    @classmethod
+    def parse_glob(cls, v: str) -> str:
+        # TODO: removing the atomic group, i.e. the "(?>" makes glob signature in the form of "*WORD*" slower then
+        #  their regex counterparts
+        return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
 class TreeSitterSignature(pydantic.BaseModel):
