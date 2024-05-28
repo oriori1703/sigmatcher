@@ -47,7 +47,11 @@ def parse_rg_line(line: str) -> Tuple[Path, int]:
 def rip_regex(pattern: Union[str, re.Pattern[str]], unpacked_path: Path) -> Dict[Path, int]:
     if isinstance(pattern, re.Pattern):
         pattern = pattern.pattern
-    process = subprocess.run(["rg", pattern, unpacked_path, "--count-matches"], stdout=subprocess.PIPE, text=True)
+    process = subprocess.run(
+        ["rg", "--count-matches", "--multiline", "--no-ignore", "--hidden", "--regexp", pattern, unpacked_path],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
 
     if bool(process.returncode):
         return {}
