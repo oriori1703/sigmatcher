@@ -31,6 +31,9 @@ Source = "https://github.com/oriori1703/sigmatcher"
 sigmatcher = "sigmatcher.cli:main"
 
 
+[tool.mypy]
+strict = true
+
 [tool.ruff]
 line-length = 128
 target-version = "py38"
