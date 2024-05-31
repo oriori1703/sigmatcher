@@ -12,6 +12,7 @@ if sys.version_info < (3, 9):
 else:
     from typing import Annotated
 
+import platformdirs
 import pydantic
 import rich
 import typer
@@ -20,6 +21,29 @@ import yaml
 from sigmatcher import __version__
 
 app = typer.Typer()
+
+cache_app = typer.Typer(help="Manage Sigmatcher's cache")
+app.add_typer(cache_app, name="cache")
+
+CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
+
+
+@cache_app.command()
+def info() -> None:
+    """
+    Get the path to Sigmatcher's cache directory.
+    """
+    print(str(CACHE_DIR_PATH))
+
+
+@cache_app.command()
+def clean() -> None:
+    """
+    Clean the cache directory.
+    """
+    for path in CACHE_DIR_PATH.iterdir():
+        shutil.rmtree(path)
+    rich.print("[green]Successfully cleaned the cache directory.[/green]")
 
 
 class BaseRegexSignature(pydantic.BaseModel):
@@ -151,7 +175,7 @@ def analyze(
         parsed_definitions = Definitions(**yaml.safe_load(f))
 
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
-    unpacked_path = Path(apk_hash)
+    unpacked_path = CACHE_DIR_PATH / apk_hash
     if not unpacked_path.exists():
         subprocess.run([apktool, "decode", apk, "--output", unpacked_path])
     results = {class_def.name: find_class_matches(class_def, unpacked_path) for class_def in parsed_definitions.defs}
