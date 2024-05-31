@@ -1,7 +1,7 @@
 import fnmatch
 import re
 from pathlib import Path
-from typing import List, Literal, Optional, TypeAlias, Union
+from typing import List, Literal, Optional, Tuple, TypeAlias, Union
 
 import pydantic
 from typing_extensions import Annotated
@@ -9,7 +9,7 @@ from typing_extensions import Annotated
 from sigmatcher.analysis import rip_regex
 
 
-class BaseRegexSignature(pydantic.BaseModel):
+class BaseRegexSignature(pydantic.BaseModel, frozen=True):
     signature: re.Pattern[str]
     count: int = 1
 
@@ -17,11 +17,11 @@ class BaseRegexSignature(pydantic.BaseModel):
         return [path for path, match_count in rip_regex(self.signature, directory).items() if match_count == self.count]
 
 
-class RegexSignature(BaseRegexSignature):
+class RegexSignature(BaseRegexSignature, frozen=True):
     type: Literal["regex"] = "regex"
 
 
-class GlobSignature(BaseRegexSignature):
+class GlobSignature(BaseRegexSignature, frozen=True):
     type: Literal["glob"] = "glob"
 
     @pydantic.field_validator("signature", mode="before")
@@ -32,7 +32,7 @@ class GlobSignature(BaseRegexSignature):
         return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
-class TreeSitterSignature(pydantic.BaseModel):
+class TreeSitterSignature(pydantic.BaseModel, frozen=True):
     signature: str
     count: int = 1
     type: Literal["treesitter"] = "treesitter"
@@ -46,23 +46,23 @@ Signature: TypeAlias = Annotated[
 ]
 
 
-class FieldDefinition(pydantic.BaseModel):
+class FieldDefinition(pydantic.BaseModel, frozen=True):
     name: str
-    signatures: List[Signature]
+    signatures: Tuple[Signature]
 
 
-class MethodDefinition(pydantic.BaseModel):
+class MethodDefinition(pydantic.BaseModel, frozen=True):
     name: str
-    signatures: List[Signature]
+    signatures: Tuple[Signature]
 
 
-class ClassDefinition(pydantic.BaseModel):
+class ClassDefinition(pydantic.BaseModel, frozen=True):
     name: str
     package: Optional[str] = None
-    signatures: List[Signature]
+    signatures: Tuple[Signature]
     fields: Optional[FieldDefinition] = None
     methods: Optional[MethodDefinition] = None
 
 
-class Definitions(pydantic.BaseModel):
-    defs: List[ClassDefinition]
+class Definitions(pydantic.BaseModel, frozen=True):
+    defs: Tuple[ClassDefinition]
