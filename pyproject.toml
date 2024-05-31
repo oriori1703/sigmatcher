@@ -18,7 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+typing = ["types-PyYAML"]
 dev = ["ruff"]
+all = ["sigmatcher[typing,dev]"]
 
 [project.urls]
 Documentation = "https://github.com/oriori1703/sigmatcher#readme"
@@ -59,4 +61,3 @@ extend-ignore = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
-
