@@ -1,11 +1,9 @@
-import fnmatch
 import hashlib
-import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Set, Tuple, TypeAlias, Union
+from typing import Optional
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -13,12 +11,13 @@ else:
     from typing import Annotated
 
 import platformdirs
-import pydantic
 import rich
 import typer
 import yaml
 
+import sigmatcher.analysis
 from sigmatcher import __version__
+from sigmatcher.definitions import Definitions
 
 app = typer.Typer()
 
@@ -44,99 +43,6 @@ def clean() -> None:
     for path in CACHE_DIR_PATH.iterdir():
         shutil.rmtree(path)
     rich.print("[green]Successfully cleaned the cache directory.[/green]")
-
-
-class BaseRegexSignature(pydantic.BaseModel):
-    signature: re.Pattern[str]
-    count: int = 1
-
-    def check(self, directory: Path) -> List[Path]:
-        return [path for path, match_count in rip_regex(self.signature, directory).items() if match_count == self.count]
-
-
-class RegexSignature(BaseRegexSignature):
-    type: Literal["regex"] = "regex"
-
-
-class GlobSignature(BaseRegexSignature):
-    type: Literal["glob"] = "glob"
-
-    @pydantic.field_validator("signature", mode="before")
-    @classmethod
-    def parse_glob(cls, v: str) -> str:
-        # TODO: removing the atomic group, i.e. the "(?>" makes glob signature in the form of "*WORD*" slower then
-        #  their regex counterparts
-        return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
-
-
-class TreeSitterSignature(pydantic.BaseModel):
-    signature: str
-    count: int = 1
-    type: Literal["treesitter"] = "treesitter"
-
-    def check(self, directory: Path) -> List[Path]:
-        raise NotImplementedError("TreeSitter signatures are not supported yet.")
-
-
-Signature: TypeAlias = Annotated[
-    Union[RegexSignature, GlobSignature, TreeSitterSignature], pydantic.Field(discriminator="type")
-]
-
-
-class FieldDefinition(pydantic.BaseModel):
-    name: str
-    signatures: List[Signature]
-
-
-class MethodDefinition(pydantic.BaseModel):
-    name: str
-    signatures: List[Signature]
-
-
-class ClassDefinition(pydantic.BaseModel):
-    name: str
-    package: Optional[str] = None
-    signatures: List[Signature]
-    fields: Optional[FieldDefinition] = None
-    methods: Optional[MethodDefinition] = None
-
-
-class Definitions(pydantic.BaseModel):
-    defs: List[ClassDefinition]
-
-
-def parse_rg_line(line: str) -> Tuple[Path, int]:
-    path, _, count = line.rpartition(":")
-    return Path(path), int(count)
-
-
-def rip_regex(pattern: Union[str, re.Pattern[str]], unpacked_path: Path) -> Dict[Path, int]:
-    if isinstance(pattern, re.Pattern):
-        pattern = pattern.pattern
-    process = subprocess.run(
-        ["rg", "--count-matches", "--multiline", "--no-ignore", "--hidden", "--regexp", pattern, unpacked_path],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-
-    if bool(process.returncode):
-        return {}
-
-    return dict(parse_rg_line(line) for line in process.stdout.splitlines())
-
-
-def find_class_matches(class_def: ClassDefinition, unpacked_path: Path) -> Set[Path]:
-    whitelist_matches: Set[Path] = set()
-    blacklist_matches: Set[Path] = set()
-
-    for signature in class_def.signatures:
-        matching = signature.check(unpacked_path)
-        if signature.count == 0:
-            blacklist_matches.update(matching)
-        else:
-            whitelist_matches.update(matching)
-    whitelist_matches.difference_update(blacklist_matches)
-    return whitelist_matches
 
 
 def version_callback(value: bool) -> None:
@@ -178,8 +84,7 @@ def analyze(
     unpacked_path = CACHE_DIR_PATH / apk_hash
     if not unpacked_path.exists():
         subprocess.run([apktool, "decode", apk, "--output", unpacked_path])
-    results = {class_def.name: find_class_matches(class_def, unpacked_path) for class_def in parsed_definitions.defs}
-    print(results)
+    sigmatcher.analysis.analyze(parsed_definitions, unpacked_path)
 
 
 def main() -> None:
