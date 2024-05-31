@@ -1,0 +1,42 @@
+name: Code Quality
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  ruff-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
+
+  ruff-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
+        with:
+          args: 'format --check'
+
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python with uv
+        uses: drivendataorg/setup-python-uv-action@main
+        with:
+          python-version: 3.12
+          cache: packages
+          cache-dependency-path: >-
+            pyproject.toml
+
+      - name: Install dependencies
+        run: uv pip install mypy .[typing]
+      - name: Run mypy
+        run: mypy src
+
+
+      - name: Run Python code
+        run: |
+          mypy src
