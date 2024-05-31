@@ -1,0 +1,28 @@
+name: Build
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python with uv
+        uses: drivendataorg/setup-python-uv-action@main
+        with:
+          python-version: 3.12
+          cache: packages
+          cache-dependency-path: >-
+            pyproject.toml
+
+      - name: Install the build package
+        run: uv pip install build[uv]
+      - name: Build the package
+        run: python -m build --installer uv .
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+            name: packages
+            path: dist/*
