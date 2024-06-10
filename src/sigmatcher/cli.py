@@ -72,7 +72,9 @@ def analyze(
     apk: Annotated[
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
-    signatures: Annotated[Path, typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)],
+    signatures: Annotated[
+        Path, typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
+    ],
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
