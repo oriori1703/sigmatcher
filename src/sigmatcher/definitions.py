@@ -6,7 +6,7 @@ from typing import List, Literal, Optional, Tuple, TypeAlias, Union
 import pydantic
 from typing_extensions import Annotated
 
-from sigmatcher.analysis import rip_regex
+from sigmatcher.grep import rip_regex
 
 
 class BaseRegexSignature(pydantic.BaseModel, frozen=True):
