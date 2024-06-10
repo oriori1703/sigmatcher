@@ -1,10 +1,17 @@
 import dataclasses
+import sys
+from abc import abstractmethod
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set, Tuple, Union
+
+if sys.version_info < (3, 10):
+    from typing_extensions import TypeAlias
+else:
+    from typing import TypeAlias
 
 import rich
 
-from sigmatcher.definitions import ClassDefinition, Definitions
+from sigmatcher.definitions import ClassDefinition, Definition, Definitions, FieldDefinition, MethodDefinition
 
 
 @dataclasses.dataclass
@@ -61,51 +68,86 @@ class TooManyMatchesError(MatchError):
     pass
 
 
-def find_class_matches(class_def: "ClassDefinition", unpacked_path: Path) -> Set[Path]:
-    whitelist_matches: Set[Path] = set()
-    blacklist_matches: Set[Path] = set()
-
-    for signature in class_def.signatures:
-        matching = signature.check(unpacked_path)
-        if signature.count == 0:
-            blacklist_matches.update(matching)
-        else:
-            whitelist_matches.update(matching)
-    whitelist_matches.difference_update(blacklist_matches)
-    return whitelist_matches
+Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod]
 
 
-def analyze_class(definition: ClassDefinition, unpacked_path: Path) -> MatchedClass:
-    class_matches = find_class_matches(definition, unpacked_path)
-    if len(class_matches) == 0:
-        raise NoMatchesError(f"Found no match for {definition.name}!")
-    if len(class_matches) > 1:
-        raise TooManyMatchesError(f"Found too many matches for {definition.name}: {class_matches}")
-    match = next(iter(class_matches))
-    with match.open() as f:
-        class_definition_line = f.readline().rstrip("\n")
-    _, _, raw_class_name = class_definition_line.rpartition(" ")
-    new_class = Class.from_java_representation(raw_class_name)
-    original_class = Class(definition.name, definition.package or new_class.pacakge)
-    return MatchedClass(original_class, new_class, match, [], [])
+@dataclasses.dataclass(frozen=True)
+class Analyzer:
+    definition: Definition
+    dependencies: Tuple["Analyzer", ...]
+
+    @abstractmethod
+    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> Result:
+        pass
+
+
+@dataclasses.dataclass(frozen=True)
+class ClassAnalyzer(Analyzer):
+    definition: ClassDefinition
+
+    @staticmethod
+    def find_class_matches(class_def: "ClassDefinition", unpacked_path: Path) -> Set[Path]:
+        whitelist_matches: Set[Path] = set()
+        blacklist_matches: Set[Path] = set()
+
+        for signature in class_def.signatures:
+            matching = signature.check(unpacked_path)
+            if signature.count == 0:
+                blacklist_matches.update(matching)
+            else:
+                whitelist_matches.update(matching)
+        whitelist_matches.difference_update(blacklist_matches)
+        return whitelist_matches
+
+    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedClass:
+        class_matches = self.find_class_matches(self.definition, unpacked_path)
+        if len(class_matches) == 0:
+            raise NoMatchesError(f"Found no match for {self.definition.name}!")
+        if len(class_matches) > 1:
+            raise TooManyMatchesError(f"Found too many matches for {self.definition.name}: {class_matches}")
+        match = next(iter(class_matches))
+        with match.open() as f:
+            class_definition_line = f.readline().rstrip("\n")
+        _, _, raw_class_name = class_definition_line.rpartition(" ")
+        new_class = Class.from_java_representation(raw_class_name)
+        original_class = Class(self.definition.name, self.definition.package or new_class.pacakge)
+        return MatchedClass(original_class, new_class, match, [], [])
+
+
+@dataclasses.dataclass(frozen=True)
+class FieldAnalyzer(Analyzer):
+    definition: FieldDefinition
+    parent: ClassAnalyzer
+
+    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedField:
+        raise NoMatchesError(f"Found no match for {self.definition.name}!")
+
+
+@dataclasses.dataclass(frozen=True)
+class MethodAnalyzer(Analyzer):
+    definition: MethodDefinition
+    parent: ClassAnalyzer
+
+    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedMethod:
+        raise NoMatchesError(f"Found no match for {self.definition.name}!")
 
 
 def analyze(definitions: Definitions, unpacked_path: Path) -> None:
-    unmatched_definitions = list(definitions.defs)
-    result = {}
-    previous_len = len(unmatched_definitions)
-    while unmatched_definitions:
-        for i, definition in enumerate(unmatched_definitions):
-            try:
-                result[definition] = analyze_class(definition, unpacked_path)
-                del unmatched_definitions[i]
-            except MatchError as e:
-                rich.print(f"[yellow]{e!s}[/yellow]")
+    analyzers: List[Analyzer] = []
+    for class_definition in definitions.defs:
+        class_analyzer = ClassAnalyzer(class_definition, dependencies=())
+        analyzers.append(class_analyzer)
+        for method_definition in class_definition.methods:
+            analyzers.append(MethodAnalyzer(method_definition, dependencies=(class_analyzer,), parent=class_analyzer))
+        for field_definition in class_definition.fields:
+            analyzers.append(FieldAnalyzer(field_definition, dependencies=(class_analyzer,), parent=class_analyzer))
 
-        current_len = len(unmatched_definitions)
-        if previous_len == current_len:
-            rich.print("[yellow]No progress in the current loop![/yellow]")
-            break
-        previous_len = current_len
+    result: Dict[Analyzer, Union[Result, Exception, None]] = {}
+    for analyzer in analyzers:
+        try:
+            result[analyzer] = analyzer.analyze(unpacked_path, result)
+        except MatchError as e:
+            result[analyzer] = e
+            rich.print(f"[yellow]{e!s}[/yellow]")
 
     rich.print(result)
