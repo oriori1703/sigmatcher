@@ -1,1 +1,246 @@
-{"$defs": {"ClassDefinition": {"properties": {"name": {"title": "Name", "type": "string"}, "package": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null, "title": "Package"}, "signatures": {"items": {"discriminator": {"mapping": {"glob": "#/$defs/GlobSignature", "regex": "#/$defs/RegexSignature", "treesitter": "#/$defs/TreeSitterSignature"}, "propertyName": "type"}, "oneOf": [{"$ref": "#/$defs/RegexSignature"}, {"$ref": "#/$defs/GlobSignature"}, {"$ref": "#/$defs/TreeSitterSignature"}]}, "title": "Signatures", "type": "array"}, "fields": {"anyOf": [{"$ref": "#/$defs/FieldDefinition"}, {"type": "null"}], "default": null}, "methods": {"anyOf": [{"$ref": "#/$defs/MethodDefinition"}, {"type": "null"}], "default": null}}, "required": ["name", "signatures"], "title": "ClassDefinition", "type": "object"}, "FieldDefinition": {"properties": {"name": {"title": "Name", "type": "string"}, "signatures": {"items": {"discriminator": {"mapping": {"glob": "#/$defs/GlobSignature", "regex": "#/$defs/RegexSignature", "treesitter": "#/$defs/TreeSitterSignature"}, "propertyName": "type"}, "oneOf": [{"$ref": "#/$defs/RegexSignature"}, {"$ref": "#/$defs/GlobSignature"}, {"$ref": "#/$defs/TreeSitterSignature"}]}, "title": "Signatures", "type": "array"}}, "required": ["name", "signatures"], "title": "FieldDefinition", "type": "object"}, "GlobSignature": {"properties": {"signature": {"format": "regex", "title": "Signature", "type": "string"}, "count": {"default": 1, "title": "Count", "type": "integer"}, "type": {"const": "glob", "default": "glob", "enum": ["glob"], "title": "Type", "type": "string"}}, "required": ["signature"], "title": "GlobSignature", "type": "object"}, "MethodDefinition": {"properties": {"name": {"title": "Name", "type": "string"}, "signatures": {"items": {"discriminator": {"mapping": {"glob": "#/$defs/GlobSignature", "regex": "#/$defs/RegexSignature", "treesitter": "#/$defs/TreeSitterSignature"}, "propertyName": "type"}, "oneOf": [{"$ref": "#/$defs/RegexSignature"}, {"$ref": "#/$defs/GlobSignature"}, {"$ref": "#/$defs/TreeSitterSignature"}]}, "title": "Signatures", "type": "array"}}, "required": ["name", "signatures"], "title": "MethodDefinition", "type": "object"}, "RegexSignature": {"properties": {"signature": {"format": "regex", "title": "Signature", "type": "string"}, "count": {"default": 1, "title": "Count", "type": "integer"}, "type": {"const": "regex", "default": "regex", "enum": ["regex"], "title": "Type", "type": "string"}}, "required": ["signature"], "title": "RegexSignature", "type": "object"}, "TreeSitterSignature": {"properties": {"signature": {"title": "Signature", "type": "string"}, "count": {"default": 1, "title": "Count", "type": "integer"}, "type": {"const": "treesitter", "default": "treesitter", "enum": ["treesitter"], "title": "Type", "type": "string"}}, "required": ["signature"], "title": "TreeSitterSignature", "type": "object"}}, "properties": {"defs": {"items": {"$ref": "#/$defs/ClassDefinition"}, "title": "Defs", "type": "array"}}, "required": ["defs"], "title": "Definitions", "type": "object"}
+{
+  "$defs": {
+    "ClassDefinition": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package"
+        },
+        "signatures": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        },
+        "fields": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FieldDefinition"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "methods": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MethodDefinition"
+          },
+          "title": "Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "ClassDefinition",
+      "type": "object"
+    },
+    "FieldDefinition": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "FieldDefinition",
+      "type": "object"
+    },
+    "GlobSignature": {
+      "properties": {
+        "signature": {
+          "format": "regex",
+          "title": "Signature",
+          "type": "string"
+        },
+        "count": {
+          "default": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "type": {
+          "const": "glob",
+          "default": "glob",
+          "enum": [
+            "glob"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signature"
+      ],
+      "title": "GlobSignature",
+      "type": "object"
+    },
+    "MethodDefinition": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "MethodDefinition",
+      "type": "object"
+    },
+    "RegexSignature": {
+      "properties": {
+        "signature": {
+          "format": "regex",
+          "title": "Signature",
+          "type": "string"
+        },
+        "count": {
+          "default": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "type": {
+          "const": "regex",
+          "default": "regex",
+          "enum": [
+            "regex"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signature"
+      ],
+      "title": "RegexSignature",
+      "type": "object"
+    },
+    "TreeSitterSignature": {
+      "properties": {
+        "signature": {
+          "title": "Signature",
+          "type": "string"
+        },
+        "count": {
+          "default": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "type": {
+          "const": "treesitter",
+          "default": "treesitter",
+          "enum": [
+            "treesitter"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signature"
+      ],
+      "title": "TreeSitterSignature",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "defs": {
+      "items": {
+        "$ref": "#/$defs/ClassDefinition"
+      },
+      "title": "Defs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "defs"
+  ],
+  "title": "Definitions",
+  "type": "object"
+}

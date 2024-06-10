@@ -58,21 +58,24 @@ Signature: TypeAlias = Annotated[
 
 class FieldDefinition(pydantic.BaseModel, frozen=True):
     name: str
-    signatures: Tuple[Signature]
+    signatures: Tuple[Signature, ...]
 
 
 class MethodDefinition(pydantic.BaseModel, frozen=True):
     name: str
-    signatures: Tuple[Signature]
+    signatures: Tuple[Signature, ...]
 
 
 class ClassDefinition(pydantic.BaseModel, frozen=True):
     name: str
     package: Optional[str] = None
-    signatures: Tuple[Signature]
-    fields: Optional[FieldDefinition] = None
-    methods: Optional[MethodDefinition] = None
+    signatures: Tuple[Signature, ...]
+    fields: Tuple[FieldDefinition, ...] = ()
+    methods: Tuple[MethodDefinition, ...] = ()
 
 
 class Definitions(pydantic.BaseModel, frozen=True):
-    defs: Tuple[ClassDefinition]
+    defs: Tuple[ClassDefinition, ...]
+
+
+Definition: TypeAlias = Union[ClassDefinition, MethodDefinition, FieldDefinition]
