@@ -1,4 +1,5 @@
 import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -59,6 +60,24 @@ def callback(
     ] = None,
 ) -> None:
     pass
+
+
+@app.command()
+def schema(
+    output: Annotated[
+        Optional[Path],
+        typer.Option(help="Output path for the json schema. If none is given print to stdout"),
+    ] = None,
+) -> None:
+    """
+    Get the json schema for writing definitions.
+    """
+    definitions_schema = Definitions.model_json_schema()
+    definitions_schema_json = json.dumps(definitions_schema, indent=2)
+    if output is not None:
+        output.write_text(definitions_schema_json)
+    else:
+        rich.print(definitions_schema_json)
 
 
 def apktool_callback(value: str) -> str:
