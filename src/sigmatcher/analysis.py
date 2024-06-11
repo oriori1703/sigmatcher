@@ -134,7 +134,22 @@ class FieldAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedField:
-        raise NoMatchesError(f"Found no match for {self.definition.name}!")
+        parent_class_result = results[self.parent]
+        assert isinstance(parent_class_result, MatchedClass)
+
+        raw_class = parent_class_result.smali_file.read_text()
+        signature = self.definition.signatures[0]
+        captured_names = set(signature.capture(raw_class))
+
+        if len(captured_names) == 0:
+            raise NoMatchesError(f"Found no match for {self.definition.name}!")
+        if len(captured_names) > 1:
+            raise TooManyMatchesError(f"Found too many matches for {self.definition.name}: {captured_names}")
+        field_name = next(iter(captured_names))
+
+        new_field = Field(field_name)
+        original_field = Field(self.definition.name)
+        return MatchedField(original_field, new_field)
 
 
 @dataclasses.dataclass(frozen=True)

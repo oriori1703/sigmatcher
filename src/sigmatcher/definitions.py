@@ -29,6 +29,10 @@ class BaseSignature(ABC):
     def check_strings(self, strings: List[str]) -> List[str]:
         raise NotImplementedError()
 
+    @abstractmethod
+    def capture(self, value: str) -> List[str]:
+        raise NotImplementedError()
+
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: re.Pattern[str]
@@ -39,6 +43,9 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     def check_strings(self, strings: List[str]) -> List[str]:
         return [string for string in strings if len(self.signature.findall(string)) == self.count]
+
+    def capture(self, value: str) -> List[str]:
+        return self.signature.findall(value)
 
 
 class RegexSignature(BaseRegexSignature, frozen=True):
@@ -67,6 +74,9 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def check_strings(self, strings: List[str]) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    def capture(self, value: str) -> List[str]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
 
 Signature: TypeAlias = Annotated[
     Union[RegexSignature, GlobSignature, TreeSitterSignature], pydantic.Field(discriminator="type")
@@ -75,7 +85,7 @@ Signature: TypeAlias = Annotated[
 
 class FieldDefinition(pydantic.BaseModel, frozen=True):
     name: str
-    signatures: Tuple[Signature, ...]
+    signatures: Tuple[Signature]
 
 
 class MethodDefinition(pydantic.BaseModel, frozen=True):
