@@ -1,6 +1,7 @@
 import fnmatch
 import re
 import sys
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -19,12 +20,25 @@ import pydantic
 from sigmatcher.grep import rip_regex
 
 
-class BaseRegexSignature(pydantic.BaseModel, frozen=True):
+class BaseSignature(ABC):
+    @abstractmethod
+    def check_directory(self, directory: Path) -> List[Path]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def check_strings(self, strings: List[str]) -> List[str]:
+        raise NotImplementedError()
+
+
+class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: re.Pattern[str]
     count: int = 1
 
-    def check(self, directory: Path) -> List[Path]:
+    def check_directory(self, directory: Path) -> List[Path]:
         return [path for path, match_count in rip_regex(self.signature, directory).items() if match_count == self.count]
+
+    def check_strings(self, strings: List[str]) -> List[str]:
+        return [string for string in strings if len(self.signature.findall(string)) == self.count]
 
 
 class RegexSignature(BaseRegexSignature, frozen=True):
@@ -42,12 +56,15 @@ class GlobSignature(BaseRegexSignature, frozen=True):
         return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
-class TreeSitterSignature(pydantic.BaseModel, frozen=True):
+class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: str
     count: int = 1
     type: Literal["treesitter"] = "treesitter"
 
-    def check(self, directory: Path) -> List[Path]:
+    def check_directory(self, directory: Path) -> List[Path]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
+    def check_strings(self, strings: List[str]) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 

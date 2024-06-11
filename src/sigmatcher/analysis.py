@@ -11,7 +11,13 @@ else:
 
 import rich
 
-from sigmatcher.definitions import ClassDefinition, Definition, Definitions, FieldDefinition, MethodDefinition
+from sigmatcher.definitions import (
+    ClassDefinition,
+    Definition,
+    Definitions,
+    FieldDefinition,
+    MethodDefinition,
+)
 
 
 @dataclasses.dataclass
@@ -28,12 +34,20 @@ class MatchedField:
 @dataclasses.dataclass
 class Method:
     name: str
+    argument_types: str
+    return_type: str
+
+    @classmethod
+    def from_java_representation(cls, java_representation: str) -> "Method":
+        name, _, types = java_representation.partition("(")
+        argument_types, _, return_type = types.partition(")")
+        return cls(name, argument_types, return_type)
 
 
 @dataclasses.dataclass
 class MatchedMethod:
-    original: Field
-    new: Field
+    original: Method
+    new: Method
 
 
 @dataclasses.dataclass
@@ -86,12 +100,12 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
     @staticmethod
-    def find_class_matches(class_def: "ClassDefinition", unpacked_path: Path) -> Set[Path]:
+    def find_class_matches(definition: "ClassDefinition", unpacked_path: Path) -> Set[Path]:
         whitelist_matches: Set[Path] = set()
         blacklist_matches: Set[Path] = set()
 
-        for signature in class_def.signatures:
-            matching = signature.check(unpacked_path)
+        for signature in definition.signatures:
+            matching = signature.check_directory(unpacked_path)
             if signature.count == 0:
                 blacklist_matches.update(matching)
             else:
@@ -128,8 +142,40 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
+    @staticmethod
+    def find_method_matches(definition: "MethodDefinition", methods: List[str]) -> Set[str]:
+        whitelist_matches: Set[str] = set()
+        blacklist_matches: Set[str] = set()
+
+        for signature in definition.signatures:
+            matching = signature.check_strings(methods)
+            if signature.count == 0:
+                blacklist_matches.update(matching)
+            else:
+                whitelist_matches.update(matching)
+        whitelist_matches.difference_update(blacklist_matches)
+        return whitelist_matches
+
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedMethod:
-        raise NoMatchesError(f"Found no match for {self.definition.name}!")
+        parent_class_result = results[self.parent]
+        assert isinstance(parent_class_result, MatchedClass)
+
+        raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
+        methods = [".method" + method for method in raw_methods]
+
+        method_matches = self.find_method_matches(self.definition, methods)
+        if len(method_matches) == 0:
+            raise NoMatchesError(f"Found no match for {self.definition.name}!")
+        if len(method_matches) > 1:
+            raise TooManyMatchesError(f"Found too many matches for {self.definition.name}: {method_matches}")
+        match = next(iter(method_matches))
+        method_definition_line, _, _ = match.partition("\n")
+        _, _, raw_method_name = method_definition_line.rpartition(" ")
+
+        new_method = Method.from_java_representation(raw_method_name)
+        # TODO: should we get the types for the original method from the definition?
+        original_method = Method(self.definition.name, new_method.argument_types, new_method.return_type)
+        return MatchedMethod(original_method, new_method)
 
 
 def analyze(definitions: Definitions, unpacked_path: Path) -> None:
