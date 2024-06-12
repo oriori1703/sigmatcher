@@ -2,6 +2,7 @@ import dataclasses
 import sys
 from abc import abstractmethod
 from pathlib import Path
+from types import NoneType
 from typing import Dict, List, Set, Tuple, Union
 
 if sys.version_info < (3, 10):
@@ -82,6 +83,10 @@ class TooManyMatchesError(MatchError):
     pass
 
 
+class DependencyMatchError(MatchError):
+    pass
+
+
 Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod]
 
 
@@ -93,6 +98,25 @@ class Analyzer:
     @abstractmethod
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> Result:
         pass
+
+    def check_dependencies(self, results: Dict["Analyzer", Union[Result, Exception, None]]) -> bool:
+        failed_dependencies: List[str] = []
+        for dependency in self.dependencies:
+            dependency_result = results[dependency]
+            assert dependency_result is not None
+            if isinstance(dependency_result, Exception):
+                failed_dependencies.append(dependency.name)
+
+        if failed_dependencies:
+            raise DependencyMatchError(
+                f"Skipped {self.name} because of the following dependencies failed: {failed_dependencies}"
+            )
+
+        return all(not isinstance(results[dependency], (Exception, NoneType)) for dependency in self.dependencies)
+
+    @property
+    def name(self) -> str:
+        return self.definition.name
 
 
 @dataclasses.dataclass(frozen=True)
@@ -116,9 +140,9 @@ class ClassAnalyzer(Analyzer):
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedClass:
         class_matches = self.find_class_matches(self.definition, unpacked_path)
         if len(class_matches) == 0:
-            raise NoMatchesError(f"Found no match for {self.definition.name}!")
+            raise NoMatchesError(f"Found no match for {self.name}!")
         if len(class_matches) > 1:
-            raise TooManyMatchesError(f"Found too many matches for {self.definition.name}: {class_matches}")
+            raise TooManyMatchesError(f"Found too many matches for {self.name}: {class_matches}")
         match = next(iter(class_matches))
         with match.open() as f:
             class_definition_line = f.readline().rstrip("\n")
@@ -142,14 +166,18 @@ class FieldAnalyzer(Analyzer):
         captured_names = set(signature.capture(raw_class))
 
         if len(captured_names) == 0:
-            raise NoMatchesError(f"Found no match for {self.definition.name}!")
+            raise NoMatchesError(f"Found no match for {self.name}!")
         if len(captured_names) > 1:
-            raise TooManyMatchesError(f"Found too many matches for {self.definition.name}: {captured_names}")
+            raise TooManyMatchesError(f"Found too many matches for {self.name}: {captured_names}")
         field_name = next(iter(captured_names))
 
         new_field = Field(field_name)
         original_field = Field(self.definition.name)
         return MatchedField(original_field, new_field)
+
+    @property
+    def name(self) -> str:
+        return f"{self.parent.name}.fields.{self.definition.name}"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -192,6 +220,10 @@ class MethodAnalyzer(Analyzer):
         original_method = Method(self.definition.name, new_method.argument_types, new_method.return_type)
         return MatchedMethod(original_method, new_method)
 
+    @property
+    def name(self) -> str:
+        return f"{self.parent.name}.methods.{self.definition.name}"
+
 
 def analyze(definitions: Definitions, unpacked_path: Path) -> None:
     analyzers: List[Analyzer] = []
@@ -203,12 +235,13 @@ def analyze(definitions: Definitions, unpacked_path: Path) -> None:
         for field_definition in class_definition.fields:
             analyzers.append(FieldAnalyzer(field_definition, dependencies=(class_analyzer,), parent=class_analyzer))
 
-    result: Dict[Analyzer, Union[Result, Exception, None]] = {}
+    results: Dict[Analyzer, Union[Result, Exception, None]] = {}
     for analyzer in analyzers:
         try:
-            result[analyzer] = analyzer.analyze(unpacked_path, result)
+            analyzer.check_dependencies(results)
+            results[analyzer] = analyzer.analyze(unpacked_path, results)
         except MatchError as e:
-            result[analyzer] = e
+            results[analyzer] = e
             rich.print(f"[yellow]{e!s}[/yellow]")
 
-    rich.print(result)
+    rich.print(results)
