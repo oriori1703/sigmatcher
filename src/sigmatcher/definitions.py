@@ -1,10 +1,20 @@
 import fnmatch
 import re
+import sys
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, TypeAlias, Union
+from typing import List, Optional, Tuple, Union
+
+if sys.version_info < (3, 9):
+    from typing_extensions import Annotated
+else:
+    from typing import Annotated
+
+if sys.version_info < (3, 10):
+    from typing_extensions import Literal, TypeAlias
+else:
+    from typing import Literal, TypeAlias
 
 import pydantic
-from typing_extensions import Annotated
 
 from sigmatcher.grep import rip_regex
 
