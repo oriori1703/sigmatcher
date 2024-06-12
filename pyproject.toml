@@ -35,6 +35,9 @@ sigmatcher = "sigmatcher.cli:main"
 [tool.mypy]
 strict = true
 
+[tool.pyright]
+typeCheckingMode = "strict"
+
 [tool.ruff]
 line-length = 128
 target-version = "py38"
