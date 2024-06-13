@@ -39,7 +39,9 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     count: int = 1
 
     def check_directory(self, directory: Path) -> List[Path]:
-        return [path for path, match_count in rip_regex(self.signature, directory).items() if match_count == self.count]
+        return [
+            path for path, match_count in rip_regex(self.signature, directory).items() if self.count in (match_count, 0)
+        ]
 
     def check_strings(self, strings: List[str]) -> List[str]:
         return [string for string in strings if len(self.signature.findall(string)) == self.count]

@@ -3,7 +3,7 @@ import sys
 from abc import abstractmethod
 from pathlib import Path
 from types import NoneType
-from typing import Dict, List, Set, Tuple, Union
+from typing import Dict, Iterable, List, Set, Tuple, TypeVar, Union
 
 if sys.version_info < (3, 10):
     from typing_extensions import TypeAlias
@@ -18,6 +18,7 @@ from sigmatcher.definitions import (
     Definitions,
     FieldDefinition,
     MethodDefinition,
+    Signature,
 )
 
 
@@ -89,6 +90,23 @@ class DependencyMatchError(MatchError):
 
 Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod]
 
+T = TypeVar("T", str, Path)
+
+
+def filter_signature_matches(matches_per_signature: Iterable[Tuple[Signature, List[T]]]) -> Set[T]:
+    whitelist_matches: Set[T] = set()
+    blacklist_matches: Set[T] = set()
+
+    for signature, matches in matches_per_signature:
+        if signature.count == 0:
+            blacklist_matches.update(matches)
+        elif whitelist_matches:
+            whitelist_matches.intersection_update(matches)
+        else:
+            whitelist_matches.update(matches)
+    whitelist_matches.difference_update(blacklist_matches)
+    return whitelist_matches
+
 
 @dataclasses.dataclass(frozen=True)
 class Analyzer:
@@ -123,22 +141,10 @@ class Analyzer:
 class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
-    @staticmethod
-    def find_class_matches(definition: "ClassDefinition", unpacked_path: Path) -> Set[Path]:
-        whitelist_matches: Set[Path] = set()
-        blacklist_matches: Set[Path] = set()
-
-        for signature in definition.signatures:
-            matching = signature.check_directory(unpacked_path)
-            if signature.count == 0:
-                blacklist_matches.update(matching)
-            else:
-                whitelist_matches.update(matching)
-        whitelist_matches.difference_update(blacklist_matches)
-        return whitelist_matches
-
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedClass:
-        class_matches = self.find_class_matches(self.definition, unpacked_path)
+        class_matches = filter_signature_matches(
+            (signature, signature.check_directory(unpacked_path)) for signature in self.definition.signatures
+        )
         if len(class_matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(class_matches) > 1:
@@ -185,20 +191,6 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    @staticmethod
-    def find_method_matches(definition: "MethodDefinition", methods: List[str]) -> Set[str]:
-        whitelist_matches: Set[str] = set()
-        blacklist_matches: Set[str] = set()
-
-        for signature in definition.signatures:
-            matching = signature.check_strings(methods)
-            if signature.count == 0:
-                blacklist_matches.update(matching)
-            else:
-                whitelist_matches.update(matching)
-        whitelist_matches.difference_update(blacklist_matches)
-        return whitelist_matches
-
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedMethod:
         parent_class_result = results[self.parent]
         assert isinstance(parent_class_result, MatchedClass)
@@ -206,7 +198,9 @@ class MethodAnalyzer(Analyzer):
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = [".method" + method for method in raw_methods]
 
-        method_matches = self.find_method_matches(self.definition, methods)
+        method_matches = filter_signature_matches(
+            (signature, signature.check_strings(methods)) for signature in self.definition.signatures
+        )
         if len(method_matches) == 0:
             raise NoMatchesError(f"Found no match for {self.definition.name}!")
         if len(method_matches) > 1:
@@ -244,4 +238,4 @@ def analyze(definitions: Definitions, unpacked_path: Path) -> None:
             results[analyzer] = e
             rich.print(f"[yellow]{e!s}[/yellow]")
 
-    rich.print(results)
+    rich.print({analyzer.name: result for analyzer, result in results.items()})
