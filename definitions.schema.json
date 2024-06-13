@@ -74,27 +74,31 @@
           "type": "string"
         },
         "signatures": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "glob": "#/$defs/GlobSignature",
-                "regex": "#/$defs/RegexSignature",
-                "treesitter": "#/$defs/TreeSitterSignature"
+          "maxItems": 1,
+          "minItems": 1,
+          "prefixItems": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "glob": "#/$defs/GlobSignature",
+                  "regex": "#/$defs/RegexSignature",
+                  "treesitter": "#/$defs/TreeSitterSignature"
+                },
+                "propertyName": "type"
               },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/RegexSignature"
-              },
-              {
-                "$ref": "#/$defs/GlobSignature"
-              },
-              {
-                "$ref": "#/$defs/TreeSitterSignature"
-              }
-            ]
-          },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/RegexSignature"
+                },
+                {
+                  "$ref": "#/$defs/GlobSignature"
+                },
+                {
+                  "$ref": "#/$defs/TreeSitterSignature"
+                }
+              ]
+            }
+          ],
           "title": "Signatures",
           "type": "array"
         }
