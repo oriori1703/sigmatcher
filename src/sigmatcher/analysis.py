@@ -179,7 +179,10 @@ class FieldAnalyzer(Analyzer):
 
         new_field = Field(field_name)
         original_field = Field(self.definition.name)
-        return MatchedField(original_field, new_field)
+
+        matched_field = MatchedField(original_field, new_field)
+        parent_class_result.matched_fields.append(matched_field)
+        return matched_field
 
     @property
     def name(self) -> str:
@@ -212,7 +215,9 @@ class MethodAnalyzer(Analyzer):
         new_method = Method.from_java_representation(raw_method_name)
         # TODO: should we get the types for the original method from the definition?
         original_method = Method(self.definition.name, new_method.argument_types, new_method.return_type)
-        return MatchedMethod(original_method, new_method)
+        matched_method = MatchedMethod(original_method, new_method)
+        parent_class_result.matched_methods.append(matched_method)
+        return matched_method
 
     @property
     def name(self) -> str:
