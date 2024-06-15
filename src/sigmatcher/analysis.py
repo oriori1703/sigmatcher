@@ -1,8 +1,7 @@
 import dataclasses
 import sys
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from pathlib import Path
-from types import NoneType
 from typing import Dict, Iterable, List, Set, Tuple, TypeVar, Union
 
 if sys.version_info < (3, 10):
@@ -109,32 +108,19 @@ def filter_signature_matches(matches_per_signature: Iterable[Tuple[Signature, Li
 
 
 @dataclasses.dataclass(frozen=True)
-class Analyzer:
+class Analyzer(ABC):
     definition: Definition
-    dependencies: Tuple["Analyzer", ...]
 
     @abstractmethod
     def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> Result:
         pass
 
-    def check_dependencies(self, results: Dict["Analyzer", Union[Result, Exception, None]]) -> bool:
-        failed_dependencies: List[str] = []
-        for dependency in self.dependencies:
-            dependency_result = results[dependency]
-            assert dependency_result is not None
-            if isinstance(dependency_result, Exception):
-                failed_dependencies.append(dependency.name)
-
-        if failed_dependencies:
-            raise DependencyMatchError(
-                f"Skipped {self.name} because of the following dependencies failed: {failed_dependencies}"
-            )
-
-        return all(not isinstance(results[dependency], (Exception, NoneType)) for dependency in self.dependencies)
-
     @property
     def name(self) -> str:
         return self.definition.name
+
+    def __repr__(self) -> str:
+        return self.name
 
 
 @dataclasses.dataclass(frozen=True)
@@ -224,20 +210,99 @@ class MethodAnalyzer(Analyzer):
         return f"{self.parent.name}.methods.{self.definition.name}"
 
 
+@dataclasses.dataclass
+class DependencyNode:
+    analyzer: Analyzer
+    successors: Set["DependencyNode"] = dataclasses.field(default_factory=set)
+    ancestors: Set["DependencyNode"] = dataclasses.field(default_factory=set)
+    score: int = 0
+
+    def add_ancestor(self, ancestor: "DependencyNode") -> None:
+        self.ancestors.add(ancestor)
+        ancestor.successors.add(self)
+
+    def add_successor(self, dependency: "DependencyNode") -> None:
+        self.successors.add(dependency)
+        dependency.ancestors.add(self)
+
+    def check_dependencies(self, results: Dict["Analyzer", Union[Result, Exception, None]]) -> None:
+        failed_dependencies: List[str] = []
+        for child in self.ancestors:
+            child_result = results[child.analyzer]
+            assert child_result is not None
+            if isinstance(child_result, Exception):
+                failed_dependencies.append(child.analyzer.name)
+
+        if failed_dependencies:
+            raise DependencyMatchError(
+                f"Skipped {self.analyzer.name} because of the following dependencies failed: {failed_dependencies}"
+            )
+
+    def __hash__(self) -> int:
+        return hash(self.analyzer)
+
+    def __repr__(self) -> str:
+        return f"DependencyNode({self.analyzer.name})"
+
+
+def create_dependency_graph(name_to_node: Dict[str, DependencyNode]) -> List[DependencyNode]:
+    root_node: List[DependencyNode] = []
+    for node in name_to_node.values():
+        for dependency in node.analyzer.definition.get_dependencies():
+            node.add_ancestor(name_to_node[dependency])
+        if not node.ancestors:
+            root_node.append(node)
+
+    return root_node
+
+
+def sort_dependency_graph(root_nodes: List[DependencyNode], nodes: Iterable[DependencyNode]) -> List[DependencyNode]:
+    def visit(node: DependencyNode) -> None:
+        if node.ancestors:
+            new_score = max(ancestor.score for ancestor in node.ancestors) + 1
+        else:
+            new_score = 1
+        if new_score > node.score:
+            node.score = new_score
+            for successor in node.successors:
+                visit(successor)
+
+    for root_node in root_nodes:
+        visit(root_node)
+    return sorted(nodes, key=lambda node: node.score)
+
+
+def sort_dependencies(name_to_node: Dict[str, DependencyNode]) -> List[DependencyNode]:
+    root_nodes = create_dependency_graph(name_to_node)
+    return sort_dependency_graph(root_nodes, name_to_node.values())
+
+
 def analyze(definitions: Definitions, unpacked_path: Path) -> None:
-    analyzers: List[Analyzer] = []
+    name_to_node: Dict[str, DependencyNode] = {}
     for class_definition in definitions.defs:
-        class_analyzer = ClassAnalyzer(class_definition, dependencies=())
-        analyzers.append(class_analyzer)
+        class_analyzer = ClassAnalyzer(class_definition)
+        class_node = DependencyNode(class_analyzer)
+        name_to_node[class_definition.name] = class_node
+
         for method_definition in class_definition.methods:
-            analyzers.append(MethodAnalyzer(method_definition, dependencies=(class_analyzer,), parent=class_analyzer))
+            method_analyzer = MethodAnalyzer(method_definition, parent=class_analyzer)
+            method_node = DependencyNode(method_analyzer)
+            method_node.add_ancestor(class_node)
+            name_to_node[method_analyzer.name] = method_node
+
         for field_definition in class_definition.fields:
-            analyzers.append(FieldAnalyzer(field_definition, dependencies=(class_analyzer,), parent=class_analyzer))
+            field_analyzer = FieldAnalyzer(field_definition, parent=class_analyzer)
+            field_node = DependencyNode(field_analyzer)
+            field_node.add_ancestor(class_node)
+            name_to_node[field_analyzer.name] = field_node
+
+    sorted_nodes = sort_dependencies(name_to_node)
 
     results: Dict[Analyzer, Union[Result, Exception, None]] = {}
-    for analyzer in analyzers:
+    for node in sorted_nodes:
+        analyzer = node.analyzer
         try:
-            analyzer.check_dependencies(results)
+            node.check_dependencies(results)
             results[analyzer] = analyzer.analyze(unpacked_path, results)
         except MatchError as e:
             results[analyzer] = e
