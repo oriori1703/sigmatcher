@@ -3,7 +3,7 @@ import re
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import ClassVar, List, Optional, Set, Tuple, Union
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -38,6 +38,8 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: re.Pattern[str]
     count: int = 1
 
+    MACRO_REGEX: ClassVar[re.Pattern[str]] = re.compile(r"\${(.*?)}")
+
     def check_directory(self, directory: Path) -> List[Path]:
         return [
             path for path, match_count in rip_regex(self.signature, directory).items() if self.count in (match_count, 0)
@@ -48,6 +50,9 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     def capture(self, value: str) -> List[str]:
         return self.signature.findall(value)
+
+    def get_dependencies(self) -> List[str]:
+        return self.MACRO_REGEX.findall(self.signature.pattern)
 
 
 class RegexSignature(BaseRegexSignature, frozen=True):
@@ -79,32 +84,39 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def capture(self, value: str) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    def get_dependencies(self) -> List[str]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
 
 Signature: TypeAlias = Annotated[
     Union[RegexSignature, GlobSignature, TreeSitterSignature], pydantic.Field(discriminator="type")
 ]
 
 
-class FieldDefinition(pydantic.BaseModel, frozen=True):
-    name: str
-    signatures: Tuple[Signature]
-
-
-class MethodDefinition(pydantic.BaseModel, frozen=True):
+class Definition(pydantic.BaseModel, frozen=True):
     name: str
     signatures: Tuple[Signature, ...]
 
+    def get_dependencies(self) -> Set[str]:
+        dependencies: Set[str] = set()
+        for signature in self.signatures:
+            dependencies.update(signature.get_dependencies())
+        return dependencies
 
-class ClassDefinition(pydantic.BaseModel, frozen=True):
-    name: str
+
+class FieldDefinition(Definition, frozen=True):
+    pass
+
+
+class MethodDefinition(Definition, frozen=True):
+    pass
+
+
+class ClassDefinition(Definition, frozen=True):
     package: Optional[str] = None
-    signatures: Tuple[Signature, ...]
     fields: Tuple[FieldDefinition, ...] = ()
     methods: Tuple[MethodDefinition, ...] = ()
 
 
 class Definitions(pydantic.BaseModel, frozen=True):
     defs: Tuple[ClassDefinition, ...]
-
-
-Definition: TypeAlias = Union[ClassDefinition, MethodDefinition, FieldDefinition]
