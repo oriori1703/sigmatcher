@@ -2,8 +2,11 @@ import fnmatch
 import re
 import sys
 from abc import ABC, abstractmethod
+from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, List, Optional, Set, Tuple, Union
+from typing import ClassVar, Dict, List, Optional, Set, Tuple, Union
+
+from sigmatcher.results import Result
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -15,9 +18,25 @@ if sys.version_info < (3, 10):
 else:
     from typing import Literal, TypeAlias
 
+if sys.version_info < (3, 11):
+    from typing_extensions import Self
+else:
+    from typing import Self
+
 import pydantic
 
 from sigmatcher.grep import rip_regex
+
+
+class InvalidMacroModifierError(Exception):
+    """
+    Exception raised when an invalid macro modifier is encountered.
+    """
+
+    def __init__(self, modifier: str, class_name: str) -> None:
+        self.modifier = modifier
+        self.class_name = class_name
+        super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
 class BaseSignature(ABC):
@@ -31,6 +50,29 @@ class BaseSignature(ABC):
 
     @abstractmethod
     def capture(self, value: str) -> List[str]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_dependencies(self) -> List[str]:
+        raise NotImplementedError()
+
+    def resolve_macro(
+        self, results: Dict[str, Union[Result, Exception, None]], result_identifier: str, result_modifier: str
+    ) -> str:
+        result = results[result_identifier]
+        assert result is not None
+        assert not isinstance(result, Exception)
+
+        try:
+            resolved_macro = getattr(result.new, result_modifier)
+        except AttributeError:
+            raise InvalidMacroModifierError(result_modifier, result.new.__class__.__name__) from None
+
+        assert isinstance(resolved_macro, str)
+        return resolved_macro
+
+    @abstractmethod
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
         raise NotImplementedError()
 
 
@@ -52,7 +94,23 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         return self.signature.findall(value)
 
     def get_dependencies(self) -> List[str]:
-        return self.MACRO_REGEX.findall(self.signature.pattern)
+        return [macro.rpartition(".")[0] for macro in self._get_raw_macros]
+
+    @cached_property
+    def _get_raw_macros(self) -> Set[str]:
+        return set(self.MACRO_REGEX.findall(self.signature.pattern))
+
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
+        if not self._get_raw_macros:
+            return self
+
+        new_pattern = self.signature.pattern
+        for macro in self._get_raw_macros:
+            result_identifier, _, result_modifier = macro.rpartition(".")
+            resolved_macro = self.resolve_macro(results, result_identifier, result_modifier)
+            new_pattern = new_pattern.replace(f"${{{macro}}}", resolved_macro)
+
+        return self.model_copy(update={"signature": re.compile(new_pattern)})
 
 
 class RegexSignature(BaseRegexSignature, frozen=True):
@@ -85,6 +143,9 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
     def get_dependencies(self) -> List[str]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 

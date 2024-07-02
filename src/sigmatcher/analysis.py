@@ -1,13 +1,7 @@
 import dataclasses
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple, TypeVar, Union
-
-if sys.version_info < (3, 10):
-    from typing_extensions import TypeAlias
-else:
-    from typing import TypeAlias
 
 import rich
 
@@ -16,59 +10,11 @@ from sigmatcher.definitions import (
     Definition,
     Definitions,
     FieldDefinition,
+    InvalidMacroModifierError,
     MethodDefinition,
     Signature,
 )
-
-
-@dataclasses.dataclass
-class Field:
-    name: str
-
-
-@dataclasses.dataclass
-class MatchedField:
-    original: Field
-    new: Field
-
-
-@dataclasses.dataclass
-class Method:
-    name: str
-    argument_types: str
-    return_type: str
-
-    @classmethod
-    def from_java_representation(cls, java_representation: str) -> "Method":
-        name, _, types = java_representation.partition("(")
-        argument_types, _, return_type = types.partition(")")
-        return cls(name, argument_types, return_type)
-
-
-@dataclasses.dataclass
-class MatchedMethod:
-    original: Method
-    new: Method
-
-
-@dataclasses.dataclass
-class Class:
-    name: str
-    pacakge: str
-
-    @classmethod
-    def from_java_representation(cls, java_representation: str) -> "Class":
-        name, _, package = java_representation[1:-1].replace("/", ".").rpartition(".")
-        return cls(name, package)
-
-
-@dataclasses.dataclass
-class MatchedClass:
-    original: Class
-    new: Class
-    smali_file: Path
-    matched_methods: List[MatchedMethod]
-    matched_fields: List[MatchedField]
+from sigmatcher.results import Class, Field, MatchedClass, MatchedField, MatchedMethod, Method, Result
 
 
 class MatchError(Exception):
@@ -86,8 +32,6 @@ class TooManyMatchesError(MatchError):
 class DependencyMatchError(MatchError):
     pass
 
-
-Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod]
 
 T = TypeVar("T", str, Path)
 
@@ -112,7 +56,7 @@ class Analyzer(ABC):
     definition: Definition
 
     @abstractmethod
-    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> Result:
+    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> Result:
         pass
 
     @property
@@ -127,9 +71,10 @@ class Analyzer(ABC):
 class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
-    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedClass:
+    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedClass:
         class_matches = filter_signature_matches(
-            (signature, signature.check_directory(unpacked_path)) for signature in self.definition.signatures
+            (signature, signature.resolve_macros(results).check_directory(unpacked_path))
+            for signature in self.definition.signatures
         )
         if len(class_matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
@@ -149,23 +94,23 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedField:
-        parent_class_result = results[self.parent]
+    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedField:
+        parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_class = parent_class_result.smali_file.read_text()
-        signature = self.definition.signatures[0]
+        signature = self.definition.signatures[0].resolve_macros(results)
         captured_names = set(signature.capture(raw_class))
 
         if len(captured_names) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(captured_names) > 1:
             raise TooManyMatchesError(f"Found too many matches for {self.name}: {captured_names}")
-        field_name = next(iter(captured_names))
+        raw_field_name = next(iter(captured_names))
 
-        new_field = Field(field_name)
-        original_field = Field(self.definition.name)
-
+        new_field = Field.from_java_representation(raw_field_name)
+        # TODO: should we get the types for the original field from the definition?
+        original_field = Field(self.definition.name, new_field.type)
         matched_field = MatchedField(original_field, new_field)
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
@@ -180,15 +125,16 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, unpacked_path: Path, results: Dict["Analyzer", Union[Result, Exception, None]]) -> MatchedMethod:
-        parent_class_result = results[self.parent]
+    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedMethod:
+        parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = [".method" + method for method in raw_methods]
 
         method_matches = filter_signature_matches(
-            (signature, signature.check_strings(methods)) for signature in self.definition.signatures
+            (signature, signature.resolve_macros(results).check_strings(methods))
+            for signature in self.definition.signatures
         )
         if len(method_matches) == 0:
             raise NoMatchesError(f"Found no match for {self.definition.name}!")
@@ -225,10 +171,10 @@ class DependencyNode:
         self.successors.add(dependency)
         dependency.ancestors.add(self)
 
-    def check_dependencies(self, results: Dict["Analyzer", Union[Result, Exception, None]]) -> None:
+    def check_dependencies(self, results: Dict["str", Union[Result, Exception, None]]) -> None:
         failed_dependencies: List[str] = []
         for child in self.ancestors:
-            child_result = results[child.analyzer]
+            child_result = results[child.analyzer.name]
             assert child_result is not None
             if isinstance(child_result, Exception):
                 failed_dependencies.append(child.analyzer.name)
@@ -298,14 +244,14 @@ def analyze(definitions: Definitions, unpacked_path: Path) -> None:
 
     sorted_nodes = sort_dependencies(name_to_node)
 
-    results: Dict[Analyzer, Union[Result, Exception, None]] = {}
+    results: Dict[str, Union[Result, Exception, None]] = {}
     for node in sorted_nodes:
         analyzer = node.analyzer
         try:
             node.check_dependencies(results)
-            results[analyzer] = analyzer.analyze(unpacked_path, results)
-        except MatchError as e:
-            results[analyzer] = e
+            results[analyzer.name] = analyzer.analyze(unpacked_path, results)
+        except (MatchError, InvalidMacroModifierError) as e:
+            results[analyzer.name] = e
             rich.print(f"[yellow]{e!s}[/yellow]")
 
-    rich.print({analyzer.name: result for analyzer, result in results.items()})
+    rich.print(results)
