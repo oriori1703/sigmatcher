@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Iterable, List, Set, Tuple, TypeVar, Union
 
+import graphlib
 import rich
 
 from sigmatcher.definitions import (
@@ -58,6 +59,22 @@ class Analyzer(ABC):
     @abstractmethod
     def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> Result:
         pass
+
+    def get_dependencies(self) -> Set[str]:
+        return self.definition.get_dependencies()
+
+    def check_dependencies(self, results: Dict[str, Union[Result, Exception, None]]) -> None:
+        failed_dependencies: List[str] = []
+        for dependency_name in self.get_dependencies():
+            child_result = results[dependency_name]
+            assert child_result is not None
+            if isinstance(child_result, Exception):
+                failed_dependencies.append(dependency_name)
+
+        if failed_dependencies:
+            raise DependencyMatchError(
+                f"Skipped {self.name} because of the following dependencies failed: {failed_dependencies}"
+            )
 
     @property
     def name(self) -> str:
@@ -115,6 +132,9 @@ class FieldAnalyzer(Analyzer):
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
+    def get_dependencies(self) -> Set[str]:
+        return self.definition.get_dependencies() | {self.parent.name}
+
     @property
     def name(self) -> str:
         return f"{self.parent.name}.fields.{self.definition.name}"
@@ -151,107 +171,45 @@ class MethodAnalyzer(Analyzer):
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
+    def get_dependencies(self) -> Set[str]:
+        return self.definition.get_dependencies() | {self.parent.name}
+
     @property
     def name(self) -> str:
         return f"{self.parent.name}.methods.{self.definition.name}"
 
 
-@dataclasses.dataclass
-class DependencyNode:
-    analyzer: Analyzer
-    successors: Set["DependencyNode"] = dataclasses.field(default_factory=set)
-    ancestors: Set["DependencyNode"] = dataclasses.field(default_factory=set)
-    score: int = 0
-
-    def add_ancestor(self, ancestor: "DependencyNode") -> None:
-        self.ancestors.add(ancestor)
-        ancestor.successors.add(self)
-
-    def add_successor(self, dependency: "DependencyNode") -> None:
-        self.successors.add(dependency)
-        dependency.ancestors.add(self)
-
-    def check_dependencies(self, results: Dict["str", Union[Result, Exception, None]]) -> None:
-        failed_dependencies: List[str] = []
-        for child in self.ancestors:
-            child_result = results[child.analyzer.name]
-            assert child_result is not None
-            if isinstance(child_result, Exception):
-                failed_dependencies.append(child.analyzer.name)
-
-        if failed_dependencies:
-            raise DependencyMatchError(
-                f"Skipped {self.analyzer.name} because of the following dependencies failed: {failed_dependencies}"
-            )
-
-    def __hash__(self) -> int:
-        return hash(self.analyzer)
-
-    def __repr__(self) -> str:
-        return f"DependencyNode({self.analyzer.name})"
-
-
-def create_dependency_graph(name_to_node: Dict[str, DependencyNode]) -> List[DependencyNode]:
-    root_node: List[DependencyNode] = []
-    for node in name_to_node.values():
-        for dependency in node.analyzer.definition.get_dependencies():
-            node.add_ancestor(name_to_node[dependency])
-        if not node.ancestors:
-            root_node.append(node)
-
-    return root_node
-
-
-def sort_dependency_graph(root_nodes: List[DependencyNode], nodes: Iterable[DependencyNode]) -> List[DependencyNode]:
-    def visit(node: DependencyNode) -> None:
-        if node.ancestors:
-            new_score = max(ancestor.score for ancestor in node.ancestors) + 1
-        else:
-            new_score = 1
-        if new_score > node.score:
-            node.score = new_score
-            for successor in node.successors:
-                visit(successor)
-
-    for root_node in root_nodes:
-        visit(root_node)
-    return sorted(nodes, key=lambda node: node.score)
-
-
-def sort_dependencies(name_to_node: Dict[str, DependencyNode]) -> List[DependencyNode]:
-    root_nodes = create_dependency_graph(name_to_node)
-    return sort_dependency_graph(root_nodes, name_to_node.values())
-
-
-def analyze(definitions: Definitions, unpacked_path: Path) -> None:
-    name_to_node: Dict[str, DependencyNode] = {}
+def create_analyzers(definitions: Definitions) -> Dict[str, Analyzer]:
+    name_to_analyzer: Dict[str, Analyzer] = {}
     for class_definition in definitions.defs:
         class_analyzer = ClassAnalyzer(class_definition)
-        class_node = DependencyNode(class_analyzer)
-        name_to_node[class_definition.name] = class_node
+        name_to_analyzer[class_definition.name] = class_analyzer
 
         for method_definition in class_definition.methods:
             method_analyzer = MethodAnalyzer(method_definition, parent=class_analyzer)
-            method_node = DependencyNode(method_analyzer)
-            method_node.add_ancestor(class_node)
-            name_to_node[method_analyzer.name] = method_node
+            name_to_analyzer[method_analyzer.name] = method_analyzer
 
         for field_definition in class_definition.fields:
             field_analyzer = FieldAnalyzer(field_definition, parent=class_analyzer)
-            field_node = DependencyNode(field_analyzer)
-            field_node.add_ancestor(class_node)
-            name_to_node[field_analyzer.name] = field_node
+            name_to_analyzer[field_analyzer.name] = field_analyzer
+    return name_to_analyzer
 
-    sorted_nodes = sort_dependencies(name_to_node)
+
+def analyze(definitions: Definitions, unpacked_path: Path) -> None:
+    name_to_analyzer = create_analyzers(definitions)
+
+    sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
+    for analyzer in name_to_analyzer.values():
+        sorter.add(analyzer.name, *analyzer.get_dependencies())
 
     results: Dict[str, Union[Result, Exception, None]] = {}
-    for node in sorted_nodes:
-        analyzer = node.analyzer
+    for analyzer_name in sorter.static_order():
+        analyzer = name_to_analyzer[analyzer_name]
         try:
-            node.check_dependencies(results)
-            results[analyzer.name] = analyzer.analyze(unpacked_path, results)
+            analyzer.check_dependencies(results)
+            results[analyzer_name] = analyzer.analyze(unpacked_path, results)
         except (MatchError, InvalidMacroModifierError) as e:
-            results[analyzer.name] = e
+            results[analyzer_name] = e
             rich.print(f"[yellow]{e!s}[/yellow]")
 
     rich.print(results)
