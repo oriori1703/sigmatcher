@@ -165,6 +165,10 @@ class Definition(pydantic.BaseModel, frozen=True):
         return dependencies
 
 
+class ExportDefinition(Definition, frozen=True):
+    pass
+
+
 class FieldDefinition(Definition, frozen=True):
     pass
 
@@ -177,6 +181,7 @@ class ClassDefinition(Definition, frozen=True):
     package: Optional[str] = None
     fields: Tuple[FieldDefinition, ...] = ()
     methods: Tuple[MethodDefinition, ...] = ()
+    exports: Tuple[ExportDefinition, ...] = ()
 
 
 class Definitions(pydantic.BaseModel, frozen=True):

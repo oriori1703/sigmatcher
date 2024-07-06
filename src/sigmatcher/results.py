@@ -6,6 +6,20 @@ from typing_extensions import TypeAlias
 
 
 @dataclasses.dataclass
+class Export:
+    value: str
+
+
+@dataclasses.dataclass
+class MatchedExport:
+    new: Export
+
+    @classmethod
+    def from_value(cls, value: str) -> "MatchedExport":
+        return cls(Export(value))
+
+
+@dataclasses.dataclass
 class Field:
     name: str
     type: str
@@ -82,4 +96,4 @@ class MatchedClass:
     matched_fields: List[MatchedField]
 
 
-Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod]
+Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod, MatchedExport]
