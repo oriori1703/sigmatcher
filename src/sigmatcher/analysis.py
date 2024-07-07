@@ -1,7 +1,7 @@
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Tuple, TypeVar, Union
+from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar, Union
 
 import graphlib
 import rich
@@ -72,8 +72,8 @@ class Analyzer(ABC):
     def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> Result:
         pass
 
-    def check_match_count(self, matches: Set[SignatureMatch]) -> None:
-        if len(matches) == 0:
+    def check_match_count(self, matches: Optional[Set[SignatureMatch]]) -> None:
+        if matches is None or len(matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(matches) > 1:
             raise TooManyMatchesError(f"Found too many matches for {self.name}: {matches}")
@@ -132,7 +132,7 @@ class FieldAnalyzer(Analyzer):
 
         raw_class = parent_class_result.smali_file.read_text()
         signature = self.definition.signatures[0].resolve_macros(results)
-        captured_names = set(signature.capture(raw_class))
+        captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         raw_field_name = next(iter(captured_names))
 
@@ -198,7 +198,7 @@ class ExportAnalyzer(Analyzer):
 
         raw_class = parent_class_result.smali_file.read_text()
         signature = self.definition.signatures[0].resolve_macros(results)
-        captured_names = set(signature.capture(raw_class))
+        captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         export_value = next(iter(captured_names))
 

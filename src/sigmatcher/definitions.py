@@ -49,7 +49,7 @@ class BaseSignature(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def capture(self, value: str) -> List[str]:
+    def capture(self, value: str) -> Set[str]:
         raise NotImplementedError()
 
     @abstractmethod
@@ -90,8 +90,16 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def check_strings(self, strings: List[str]) -> List[str]:
         return [string for string in strings if len(self.signature.findall(string)) == self.count]
 
-    def capture(self, value: str) -> List[str]:
-        return self.signature.findall(value)
+    def capture(self, value: str) -> Set[str]:
+        match = self.signature.search(value)
+        if match is None:
+            return set()
+        try:
+            return {match.group("match")}
+        except IndexError:
+            pass
+
+        return set(match.groups())
 
     def get_dependencies(self) -> List[str]:
         return [macro.rpartition(".")[0] for macro in self._get_raw_macros]
@@ -139,7 +147,7 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def check_strings(self, strings: List[str]) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def capture(self, value: str) -> List[str]:
+    def capture(self, value: str) -> Set[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
     def get_dependencies(self) -> List[str]:
