@@ -1,8 +1,12 @@
 import dataclasses
+import sys
 from pathlib import Path
 from typing import List, Union
 
-from typing_extensions import TypeAlias
+if sys.version_info < (3, 10):
+    from typing_extensions import TypeAlias
+else:
+    from typing import TypeAlias
 
 
 @dataclasses.dataclass

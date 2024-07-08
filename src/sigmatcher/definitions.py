@@ -6,8 +6,6 @@ from functools import cached_property
 from pathlib import Path
 from typing import ClassVar, Dict, List, Optional, Set, Tuple, Union
 
-from sigmatcher.results import Result
-
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
 else:
@@ -26,6 +24,7 @@ else:
 import pydantic
 
 from sigmatcher.grep import rip_regex
+from sigmatcher.results import Result
 
 
 class InvalidMacroModifierError(Exception):
