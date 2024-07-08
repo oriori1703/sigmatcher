@@ -155,15 +155,27 @@
     },
     "GlobSignature": {
       "properties": {
-        "signature": {
-          "format": "regex",
-          "title": "Signature",
-          "type": "string"
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Range"
         },
         "count": {
           "default": 1,
           "title": "Count",
           "type": "integer"
+        },
+        "signature": {
+          "format": "regex",
+          "title": "Signature",
+          "type": "string"
         },
         "type": {
           "const": "glob",
@@ -222,15 +234,27 @@
     },
     "RegexSignature": {
       "properties": {
-        "signature": {
-          "format": "regex",
-          "title": "Signature",
-          "type": "string"
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Range"
         },
         "count": {
           "default": 1,
           "title": "Count",
           "type": "integer"
+        },
+        "signature": {
+          "format": "regex",
+          "title": "Signature",
+          "type": "string"
         },
         "type": {
           "const": "regex",
@@ -250,14 +274,26 @@
     },
     "TreeSitterSignature": {
       "properties": {
-        "signature": {
-          "title": "Signature",
-          "type": "string"
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Range"
         },
         "count": {
           "default": 1,
           "title": "Count",
           "type": "integer"
+        },
+        "signature": {
+          "title": "Signature",
+          "type": "string"
         },
         "type": {
           "const": "treesitter",

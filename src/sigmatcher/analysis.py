@@ -68,7 +68,9 @@ class Analyzer(ABC):
     definition: Definition
 
     @abstractmethod
-    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> Result:
+    def analyze(
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> Result:
         pass
 
     def check_match_count(self, matches: Optional[Set[SignatureMatch]]) -> None:
@@ -77,12 +79,14 @@ class Analyzer(ABC):
         if len(matches) > 1:
             raise TooManyMatchesError(f"Found too many matches for {self.name}: {matches}")
 
-    def get_dependencies(self) -> Set[str]:
-        return self.definition.get_dependencies()
+    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
+        return self.definition.get_dependencies(app_version)
 
-    def check_dependencies(self, results: Dict[str, Union[Result, Exception, None]]) -> None:
+    def check_dependencies(
+        self, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> None:
         failed_dependencies: List[str] = []
-        for dependency_name in self.get_dependencies():
+        for dependency_name in self.get_dependencies(app_version):
             child_result = results[dependency_name]
             assert child_result is not None
             if isinstance(child_result, Exception):
@@ -105,10 +109,12 @@ class Analyzer(ABC):
 class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
-    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedClass:
+    def analyze(
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> MatchedClass:
+        signatures = self.definition.get_signatures_for_version(app_version)
         class_matches = filter_signature_matches(
-            (signature, signature.resolve_macros(results).check_directory(unpacked_path))
-            for signature in self.definition.signatures
+            (signature, signature.resolve_macros(results).check_directory(unpacked_path)) for signature in signatures
         )
         self.check_match_count(class_matches)
         match = next(iter(class_matches))
@@ -125,12 +131,15 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedField:
+    def analyze(
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_class = parent_class_result.smali_file.read_text()
-        signature = self.definition.signatures[0].resolve_macros(results)
+        signatures = self.definition.get_signatures_for_version(app_version)
+        signature = signatures[0].resolve_macros(results)
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         raw_field_name = next(iter(captured_names))
@@ -142,8 +151,8 @@ class FieldAnalyzer(Analyzer):
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
-    def get_dependencies(self) -> Set[str]:
-        return self.definition.get_dependencies() | {self.parent.name}
+    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
+        return self.definition.get_dependencies(app_version) | {self.parent.name}
 
     @property
     def name(self) -> str:
@@ -155,16 +164,18 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedMethod:
+    def analyze(
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = [".method" + method for method in raw_methods]
 
+        signatures = self.definition.get_signatures_for_version(app_version)
         method_matches = filter_signature_matches(
-            (signature, signature.resolve_macros(results).check_strings(methods))
-            for signature in self.definition.signatures
+            (signature, signature.resolve_macros(results).check_strings(methods)) for signature in signatures
         )
         self.check_match_count(method_matches)
         match = next(iter(method_matches))
@@ -178,8 +189,8 @@ class MethodAnalyzer(Analyzer):
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
-    def get_dependencies(self) -> Set[str]:
-        return self.definition.get_dependencies() | {self.parent.name}
+    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
+        return self.definition.get_dependencies(app_version) | {self.parent.name}
 
     @property
     def name(self) -> str:
@@ -191,20 +202,23 @@ class ExportAnalyzer(Analyzer):
     definition: ExportDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, unpacked_path: Path, results: Dict[str, Union[Result, Exception, None]]) -> MatchedExport:
+    def analyze(
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+    ) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_class = parent_class_result.smali_file.read_text()
-        signature = self.definition.signatures[0].resolve_macros(results)
+        signatures = self.definition.get_signatures_for_version(app_version)
+        signature = signatures[0].resolve_macros(results)
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         export_value = next(iter(captured_names))
 
         return MatchedExport.from_value(export_value)
 
-    def get_dependencies(self) -> Set[str]:
-        return self.definition.get_dependencies() | {self.parent.name}
+    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
+        return self.definition.get_dependencies(app_version) | {self.parent.name}
 
     @property
     def name(self) -> str:
@@ -232,19 +246,19 @@ def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
     return name_to_analyzer
 
 
-def analyze(definitions: List[ClassDefinition], unpacked_path: Path) -> None:
+def analyze(definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]) -> None:
     name_to_analyzer = create_analyzers(definitions)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
-        sorter.add(analyzer.name, *analyzer.get_dependencies())
+        sorter.add(analyzer.name, *analyzer.get_dependencies(app_version))
 
     results: Dict[str, Union[Result, Exception, None]] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
-            analyzer.check_dependencies(results)
-            results[analyzer_name] = analyzer.analyze(unpacked_path, results)
+            analyzer.check_dependencies(app_version, results)
+            results[analyzer_name] = analyzer.analyze(unpacked_path, app_version, results)
         except (MatchError, InvalidMacroModifierError) as e:
             results[analyzer_name] = e
             rich.print(f"[yellow]{e!s}[/yellow]")
