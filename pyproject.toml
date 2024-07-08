@@ -36,6 +36,15 @@ sigmatcher = "sigmatcher.cli:main"
 
 [tool.mypy]
 strict = true
+plugins = [
+    "pydantic.mypy"
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
 
 [tool.pyright]
 typeCheckingMode = "strict"
