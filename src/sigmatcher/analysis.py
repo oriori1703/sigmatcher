@@ -9,7 +9,6 @@ import rich
 from sigmatcher.definitions import (
     ClassDefinition,
     Definition,
-    Definitions,
     ExportDefinition,
     FieldDefinition,
     InvalidMacroModifierError,
@@ -212,9 +211,9 @@ class ExportAnalyzer(Analyzer):
         return f"{self.parent.name}.exports.{self.definition.name}"
 
 
-def create_analyzers(definitions: Definitions) -> Dict[str, Analyzer]:
+def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
     name_to_analyzer: Dict[str, Analyzer] = {}
-    for class_definition in definitions.defs:
+    for class_definition in definitions:
         class_analyzer = ClassAnalyzer(class_definition)
         name_to_analyzer[class_definition.name] = class_analyzer
 
@@ -233,7 +232,7 @@ def create_analyzers(definitions: Definitions) -> Dict[str, Analyzer]:
     return name_to_analyzer
 
 
-def analyze(definitions: Definitions, unpacked_path: Path) -> None:
+def analyze(definitions: List[ClassDefinition], unpacked_path: Path) -> None:
     name_to_analyzer = create_analyzers(definitions)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()

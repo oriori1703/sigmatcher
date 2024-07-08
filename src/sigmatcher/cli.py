@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -18,7 +18,7 @@ import yaml
 
 import sigmatcher.analysis
 from sigmatcher import __version__
-from sigmatcher.definitions import Definitions
+from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition
 
 app = typer.Typer()
 
@@ -72,7 +72,7 @@ def schema(
     """
     Get the json schema for writing definitions.
     """
-    definitions_schema = Definitions.model_json_schema()
+    definitions_schema = DEFINITIONS_TYPE_ADAPTER.json_schema()
     definitions_schema_json = json.dumps(definitions_schema, indent=2)
     if output is not None:
         output.write_text(definitions_schema_json)
@@ -92,14 +92,18 @@ def analyze(
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
     signatures: Annotated[
-        Path, typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
+        List[Path], typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
     ],
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
 ) -> None:
-    with signatures.open("r") as f:
-        parsed_definitions = Definitions(**yaml.safe_load(f))
+    parsed_definitions: List[ClassDefinition] = []
+    for signature_file in signatures:
+        with signature_file.open("r") as f:
+            raw_yaml = yaml.safe_load(f)
+            definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+            parsed_definitions.extend(definitions)
 
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = CACHE_DIR_PATH / apk_hash

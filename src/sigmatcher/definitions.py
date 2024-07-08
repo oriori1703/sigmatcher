@@ -191,5 +191,4 @@ class ClassDefinition(Definition, frozen=True):
     exports: Tuple[ExportDefinition, ...] = ()
 
 
-class Definitions(pydantic.BaseModel, frozen=True):
-    defs: Tuple[ClassDefinition, ...]
+DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(List[ClassDefinition])

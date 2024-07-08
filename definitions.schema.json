@@ -6,18 +6,6 @@
           "title": "Name",
           "type": "string"
         },
-        "package": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Package"
-        },
         "signatures": {
           "items": {
             "discriminator": {
@@ -43,6 +31,18 @@
           "title": "Signatures",
           "type": "array"
         },
+        "package": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package"
+        },
         "fields": {
           "default": [],
           "items": {
@@ -58,6 +58,14 @@
           },
           "title": "Methods",
           "type": "array"
+        },
+        "exports": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExportDefinition"
+          },
+          "title": "Exports",
+          "type": "array"
         }
       },
       "required": [
@@ -67,6 +75,45 @@
       "title": "ClassDefinition",
       "type": "object"
     },
+    "ExportDefinition": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "ExportDefinition",
+      "type": "object"
+    },
     "FieldDefinition": {
       "properties": {
         "name": {
@@ -74,31 +121,27 @@
           "type": "string"
         },
         "signatures": {
-          "maxItems": 1,
-          "minItems": 1,
-          "prefixItems": [
-            {
-              "discriminator": {
-                "mapping": {
-                  "glob": "#/$defs/GlobSignature",
-                  "regex": "#/$defs/RegexSignature",
-                  "treesitter": "#/$defs/TreeSitterSignature"
-                },
-                "propertyName": "type"
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
               },
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/RegexSignature"
-                },
-                {
-                  "$ref": "#/$defs/GlobSignature"
-                },
-                {
-                  "$ref": "#/$defs/TreeSitterSignature"
-                }
-              ]
-            }
-          ],
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
           "title": "Signatures",
           "type": "array"
         }
@@ -233,18 +276,8 @@
       "type": "object"
     }
   },
-  "properties": {
-    "defs": {
-      "items": {
-        "$ref": "#/$defs/ClassDefinition"
-      },
-      "title": "Defs",
-      "type": "array"
-    }
+  "items": {
+    "$ref": "#/$defs/ClassDefinition"
   },
-  "required": [
-    "defs"
-  ],
-  "title": "Definitions",
-  "type": "object"
+  "type": "array"
 }
