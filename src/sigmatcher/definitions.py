@@ -22,6 +22,7 @@ else:
     from typing import Self
 
 import pydantic
+from packaging.specifiers import SpecifierSet
 
 from sigmatcher.grep import rip_regex
 from sigmatcher.results import Result
@@ -38,7 +39,10 @@ class InvalidMacroModifierError(Exception):
         super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
-class BaseSignature(ABC):
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
+    version_range: Optional[str] = None
+    count: int = 1
+
     @abstractmethod
     def check_directory(self, directory: Path) -> List[Path]:
         raise NotImplementedError()
@@ -74,10 +78,14 @@ class BaseSignature(ABC):
     def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
         raise NotImplementedError()
 
+    def is_in_version_range(self, app_version: str) -> bool:
+        if self.version_range is None:
+            return True
+        return SpecifierSet(self.version_range).contains(app_version)
+
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: re.Pattern[str]
-    count: int = 1
 
     MACRO_REGEX: ClassVar[re.Pattern[str]] = re.compile(r"\${(.*?)}")
 
@@ -137,7 +145,6 @@ class GlobSignature(BaseRegexSignature, frozen=True):
 
 class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: str
-    count: int = 1
     type: Literal["treesitter"] = "treesitter"
 
     def check_directory(self, directory: Path) -> List[Path]:
@@ -165,9 +172,14 @@ class Definition(pydantic.BaseModel, frozen=True):
     name: str
     signatures: Tuple[Signature, ...]
 
-    def get_dependencies(self) -> Set[str]:
+    def get_signatures_for_version(self, app_version: Optional[str]) -> Tuple[Signature, ...]:
+        if app_version is None:
+            return self.signatures
+        return tuple(signature for signature in self.signatures if signature.is_in_version_range(app_version))
+
+    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
         dependencies: Set[str] = set()
-        for signature in self.signatures:
+        for signature in self.get_signatures_for_version(app_version):
             dependencies.update(signature.get_dependencies())
         return dependencies
 

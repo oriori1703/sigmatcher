@@ -109,7 +109,12 @@ def analyze(
     unpacked_path = CACHE_DIR_PATH / apk_hash
     if not unpacked_path.exists():
         subprocess.run([apktool, "decode", apk, "--output", unpacked_path])
-    sigmatcher.analysis.analyze(parsed_definitions, unpacked_path)
+
+    apktool_yaml_file = unpacked_path / "apktool.yml"
+    with apktool_yaml_file.open() as f:
+        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+
+    sigmatcher.analysis.analyze(parsed_definitions, unpacked_path, apk_version)
 
 
 def main() -> None:
