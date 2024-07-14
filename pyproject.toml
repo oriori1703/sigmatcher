@@ -12,18 +12,18 @@ dynamic = ["version"]
 description = "Write signatures to automatically match java classes and methods between version"
 
 dependencies = [
-    "typer >= 0.12.3",
-    "pydantic",
-    "pyyaml",
-    "platformdirs",
-    "packaging",
-    "graphlib_backport;python_version<'3.9'",
+    "typer>=0.12.3",
+    "pydantic>=2.8.2,<3",
+    "pyyaml>=6.0.1,<7",
+    "platformdirs>=4.2.2,<5",
+    "packaging>=24.1,<25",
+    "graphlib_backport>=1.1.0,<2;python_version<'3.9'",
     "typing-extensions;python_version<'3.9'",
 ]
 
 [project.optional-dependencies]
 typing = ["types-PyYAML"]
-dev = ["ruff"]
+dev = ["ruff", "mypy"]
 all = ["sigmatcher[typing,dev]"]
 
 [project.urls]
