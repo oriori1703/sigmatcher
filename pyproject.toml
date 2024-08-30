@@ -11,6 +11,7 @@ classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version"]
 description = "Write signatures to automatically match java classes and methods between version"
 
+requires-python = ">=3.8"
 dependencies = [
     "typer>=0.12.3",
     "pydantic>=2.8.2,<3",
@@ -22,9 +23,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-typing = ["types-PyYAML"]
-dev = ["ruff", "mypy"]
-all = ["sigmatcher[typing,dev]"]
+typing = ["types-PyYAML>=6.0.1,<7"]
+all = ["sigmatcher[typing]"]
 
 [project.urls]
 Documentation = "https://github.com/oriori1703/sigmatcher#readme"
@@ -34,11 +34,13 @@ Source = "https://github.com/oriori1703/sigmatcher"
 [project.scripts]
 sigmatcher = "sigmatcher.cli:main"
 
+[tool.uv]
+dev-dependencies = ["ruff", "mypy"]
 
 [tool.mypy]
 strict = true
 plugins = [
-    "pydantic.mypy"
+    "pydantic.mypy",
 ]
 
 [tool.pydantic-mypy]
@@ -55,7 +57,6 @@ venv = ".venv"
 [tool.ruff]
 line-length = 120
 target-version = "py38"
-src = ["src"]
 
 [tool.ruff.lint]
 extend-select = [
