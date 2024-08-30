@@ -49,6 +49,8 @@ warn_required_dynamic_aliases = true
 
 [tool.pyright]
 typeCheckingMode = "strict"
+venvPath = "./"
+venv = ".venv"
 
 [tool.ruff]
 line-length = 120
