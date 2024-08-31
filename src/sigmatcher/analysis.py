@@ -122,8 +122,10 @@ class ClassAnalyzer(Analyzer):
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
         new_class = Class.from_java_representation(raw_class_name)
-        original_class = Class(self.definition.name, self.definition.package or new_class.pacakge)
-        return MatchedClass(original_class, new_class, match, [], [])
+        original_class = Class(name=self.definition.name, pacakge=self.definition.package or new_class.pacakge)
+        return MatchedClass(
+            original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[]
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -146,8 +148,8 @@ class FieldAnalyzer(Analyzer):
 
         new_field = Field.from_java_representation(raw_field_name)
         # TODO: should we get the types for the original field from the definition?
-        original_field = Field(self.definition.name, new_field.type)
-        matched_field = MatchedField(original_field, new_field)
+        original_field = Field(name=self.definition.name, type=new_field.type)
+        matched_field = MatchedField(original=original_field, new=new_field)
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
@@ -184,8 +186,10 @@ class MethodAnalyzer(Analyzer):
 
         new_method = Method.from_java_representation(raw_method_name)
         # TODO: should we get the types for the original method from the definition?
-        original_method = Method(self.definition.name, new_method.argument_types, new_method.return_type)
-        matched_method = MatchedMethod(original_method, new_method)
+        original_method = Method(
+            name=self.definition.name, argument_types=new_method.argument_types, return_type=new_method.return_type
+        )
+        matched_method = MatchedMethod(original=original_method, new=new_method)
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
