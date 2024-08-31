@@ -69,7 +69,7 @@ class Analyzer(ABC):
 
     @abstractmethod
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> Result:
         pass
 
@@ -82,13 +82,10 @@ class Analyzer(ABC):
     def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
         return self.definition.get_dependencies(app_version)
 
-    def check_dependencies(
-        self, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
-    ) -> None:
+    def check_dependencies(self, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]) -> None:
         failed_dependencies: List[str] = []
         for dependency_name in self.get_dependencies(app_version):
             child_result = results[dependency_name]
-            assert child_result is not None
             if isinstance(child_result, Exception):
                 failed_dependencies.append(dependency_name)
 
@@ -110,7 +107,7 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedClass:
         signatures = self.definition.get_signatures_for_version(app_version)
         class_matches = filter_signature_matches(
@@ -134,7 +131,7 @@ class FieldAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -167,7 +164,7 @@ class MethodAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -207,7 +204,7 @@ class ExportAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -250,14 +247,16 @@ def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
     return name_to_analyzer
 
 
-def analyze(definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]) -> None:
+def analyze(
+    definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
+) -> Dict[str, Union[Result, Exception]]:
     name_to_analyzer = create_analyzers(definitions)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         sorter.add(analyzer.name, *analyzer.get_dependencies(app_version))
 
-    results: Dict[str, Union[Result, Exception, None]] = {}
+    results: Dict[str, Union[Result, Exception]] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
