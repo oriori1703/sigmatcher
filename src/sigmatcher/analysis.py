@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar, Union
 
 import graphlib
-import rich
 
 from sigmatcher.definitions import (
     ClassDefinition,
@@ -264,6 +263,4 @@ def analyze(
             results[analyzer_name] = analyzer.analyze(unpacked_path, app_version, results)
         except (MatchError, InvalidMacroModifierError) as e:
             results[analyzer_name] = e
-            rich.print(f"[yellow]{e!s}[/yellow]")
-
-    rich.print(results)
+    return results
