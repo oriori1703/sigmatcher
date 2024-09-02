@@ -60,10 +60,9 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
         raise NotImplementedError()
 
     def resolve_macro(
-        self, results: Dict[str, Union[Result, Exception, None]], result_identifier: str, result_modifier: str
+        self, results: Dict[str, Union[Result, Exception]], result_identifier: str, result_modifier: str
     ) -> str:
         result = results[result_identifier]
-        assert result is not None
         assert not isinstance(result, Exception)
 
         try:
@@ -75,7 +74,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
         return resolved_macro
 
     @abstractmethod
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
         raise NotImplementedError()
 
     def is_in_version_range(self, app_version: str) -> bool:
@@ -115,7 +114,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def _get_raw_macros(self) -> Set[str]:
         return set(self.MACRO_REGEX.findall(self.signature.pattern))
 
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
         if not self._get_raw_macros:
             return self
 
@@ -159,7 +158,7 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def get_dependencies(self) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception, None]]) -> Self:
+    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 

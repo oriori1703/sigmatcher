@@ -1,4 +1,3 @@
-import dataclasses
 import sys
 from pathlib import Path
 from typing import List, Union
@@ -8,30 +7,29 @@ if sys.version_info < (3, 10):
 else:
     from typing import TypeAlias
 
+import pydantic
 
-@dataclasses.dataclass
-class Export:
+
+class Export(pydantic.BaseModel):
     value: str
 
 
-@dataclasses.dataclass
-class MatchedExport:
+class MatchedExport(pydantic.BaseModel):
     new: Export
 
     @classmethod
     def from_value(cls, value: str) -> "MatchedExport":
-        return cls(Export(value))
+        return cls(new=Export(value=value))
 
 
-@dataclasses.dataclass
-class Field:
+class Field(pydantic.BaseModel):
     name: str
     type: str
 
     @classmethod
     def from_java_representation(cls, java_representation: str) -> "Field":
         name, _, field_type = java_representation.partition(":")
-        return cls(name, field_type)
+        return cls(name=name, type=field_type)
 
     def to_java_representation(self) -> str:
         return f"{self.name}:{self.type}"
@@ -41,14 +39,12 @@ class Field:
         return self.to_java_representation()
 
 
-@dataclasses.dataclass
-class MatchedField:
+class MatchedField(pydantic.BaseModel):
     original: Field
     new: Field
 
 
-@dataclasses.dataclass
-class Method:
+class Method(pydantic.BaseModel):
     name: str
     argument_types: str
     return_type: str
@@ -57,7 +53,7 @@ class Method:
     def from_java_representation(cls, java_representation: str) -> "Method":
         name, _, types = java_representation.partition("(")
         argument_types, _, return_type = types.partition(")")
-        return cls(name, argument_types, return_type)
+        return cls(name=name, argument_types=argument_types, return_type=return_type)
 
     def to_java_representation(self) -> str:
         return f"{self.name}({self.argument_types}){self.return_type}"
@@ -67,21 +63,19 @@ class Method:
         return self.to_java_representation()
 
 
-@dataclasses.dataclass
-class MatchedMethod:
+class MatchedMethod(pydantic.BaseModel):
     original: Method
     new: Method
 
 
-@dataclasses.dataclass
-class Class:
+class Class(pydantic.BaseModel):
     name: str
     pacakge: str
 
     @classmethod
     def from_java_representation(cls, java_representation: str) -> "Class":
         package, _, name = java_representation[1:-1].replace("/", ".").rpartition(".")
-        return cls(name, package)
+        return cls(name=name, pacakge=package)
 
     def to_java_representation(self) -> str:
         return f"L{self.pacakge}.{self.name};".replace(".", "/")
@@ -91,11 +85,10 @@ class Class:
         return self.to_java_representation()
 
 
-@dataclasses.dataclass
-class MatchedClass:
+class MatchedClass(pydantic.BaseModel):
     original: Class
     new: Class
-    smali_file: Path
+    smali_file: Path = pydantic.Field(..., exclude=True)
     matched_methods: List[MatchedMethod]
     matched_fields: List[MatchedField]
 

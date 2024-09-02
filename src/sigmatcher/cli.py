@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -19,6 +19,8 @@ import yaml
 import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition
+from sigmatcher.formats import OutputFormat, convert_to_format
+from sigmatcher.results import MatchedClass
 
 app = typer.Typer()
 
@@ -94,6 +96,7 @@ def analyze(
     signatures: Annotated[
         List[Path], typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
     ],
+    output_format: Annotated[OutputFormat, typer.Option(help="The output mapping format")] = OutputFormat.RAW,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
@@ -114,7 +117,16 @@ def analyze(
     with apktool_yaml_file.open() as f:
         apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
 
-    sigmatcher.analysis.analyze(parsed_definitions, unpacked_path, apk_version)
+    results = sigmatcher.analysis.analyze(parsed_definitions, unpacked_path, apk_version)
+    successful_results: Dict[str, MatchedClass] = {}
+    for analyzer_name, result in results.items():
+        if isinstance(result, Exception):
+            rich.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+            continue
+        if isinstance(result, MatchedClass):
+            successful_results[analyzer_name] = result
+
+    rich.print(convert_to_format(successful_results, output_format))
 
 
 def main() -> None:

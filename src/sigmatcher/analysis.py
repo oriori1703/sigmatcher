@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar, Union
 
 import graphlib
-import rich
 
 from sigmatcher.definitions import (
     ClassDefinition,
@@ -69,7 +68,7 @@ class Analyzer(ABC):
 
     @abstractmethod
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> Result:
         pass
 
@@ -82,13 +81,10 @@ class Analyzer(ABC):
     def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
         return self.definition.get_dependencies(app_version)
 
-    def check_dependencies(
-        self, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
-    ) -> None:
+    def check_dependencies(self, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]) -> None:
         failed_dependencies: List[str] = []
         for dependency_name in self.get_dependencies(app_version):
             child_result = results[dependency_name]
-            assert child_result is not None
             if isinstance(child_result, Exception):
                 failed_dependencies.append(dependency_name)
 
@@ -110,7 +106,7 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedClass:
         signatures = self.definition.get_signatures_for_version(app_version)
         class_matches = filter_signature_matches(
@@ -122,8 +118,10 @@ class ClassAnalyzer(Analyzer):
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
         new_class = Class.from_java_representation(raw_class_name)
-        original_class = Class(self.definition.name, self.definition.package or new_class.pacakge)
-        return MatchedClass(original_class, new_class, match, [], [])
+        original_class = Class(name=self.definition.name, pacakge=self.definition.package or new_class.pacakge)
+        return MatchedClass(
+            original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[]
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -132,7 +130,7 @@ class FieldAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -146,8 +144,8 @@ class FieldAnalyzer(Analyzer):
 
         new_field = Field.from_java_representation(raw_field_name)
         # TODO: should we get the types for the original field from the definition?
-        original_field = Field(self.definition.name, new_field.type)
-        matched_field = MatchedField(original_field, new_field)
+        original_field = Field(name=self.definition.name, type=new_field.type)
+        matched_field = MatchedField(original=original_field, new=new_field)
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
@@ -165,7 +163,7 @@ class MethodAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -184,8 +182,10 @@ class MethodAnalyzer(Analyzer):
 
         new_method = Method.from_java_representation(raw_method_name)
         # TODO: should we get the types for the original method from the definition?
-        original_method = Method(self.definition.name, new_method.argument_types, new_method.return_type)
-        matched_method = MatchedMethod(original_method, new_method)
+        original_method = Method(
+            name=self.definition.name, argument_types=new_method.argument_types, return_type=new_method.return_type
+        )
+        matched_method = MatchedMethod(original=original_method, new=new_method)
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
@@ -203,7 +203,7 @@ class ExportAnalyzer(Analyzer):
     parent: ClassAnalyzer
 
     def analyze(
-        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception, None]]
+        self, unpacked_path: Path, app_version: Optional[str], results: Dict[str, Union[Result, Exception]]
     ) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -246,14 +246,16 @@ def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
     return name_to_analyzer
 
 
-def analyze(definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]) -> None:
+def analyze(
+    definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
+) -> Dict[str, Union[Result, Exception]]:
     name_to_analyzer = create_analyzers(definitions)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         sorter.add(analyzer.name, *analyzer.get_dependencies(app_version))
 
-    results: Dict[str, Union[Result, Exception, None]] = {}
+    results: Dict[str, Union[Result, Exception]] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
@@ -261,6 +263,4 @@ def analyze(definitions: List[ClassDefinition], unpacked_path: Path, app_version
             results[analyzer_name] = analyzer.analyze(unpacked_path, app_version, results)
         except (MatchError, InvalidMacroModifierError) as e:
             results[analyzer_name] = e
-            rich.print(f"[yellow]{e!s}[/yellow]")
-
-    rich.print(results)
+    return results
