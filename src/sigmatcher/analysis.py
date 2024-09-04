@@ -225,21 +225,30 @@ class ExportAnalyzer(Analyzer):
         return f"{self.parent.name}.exports.{self.definition.name}"
 
 
-def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
+def create_analyzers(definitions: List[ClassDefinition], app_version: Optional[str]) -> Dict[str, Analyzer]:
     name_to_analyzer: Dict[str, Analyzer] = {}
     for class_definition in definitions:
+        if not class_definition.is_in_version_range(app_version):
+            continue
+
         class_analyzer = ClassAnalyzer(class_definition)
         name_to_analyzer[class_definition.name] = class_analyzer
 
         for method_definition in class_definition.methods:
+            if not method_definition.is_in_version_range(app_version):
+                continue
             method_analyzer = MethodAnalyzer(method_definition, parent=class_analyzer)
             name_to_analyzer[method_analyzer.name] = method_analyzer
 
         for field_definition in class_definition.fields:
+            if not field_definition.is_in_version_range(app_version):
+                continue
             field_analyzer = FieldAnalyzer(field_definition, parent=class_analyzer)
             name_to_analyzer[field_analyzer.name] = field_analyzer
 
         for export_definition in class_definition.exports:
+            if not export_definition.is_in_version_range(app_version):
+                continue
             export_analyzer = ExportAnalyzer(export_definition, parent=class_analyzer)
             name_to_analyzer[export_analyzer.name] = export_analyzer
 
@@ -247,9 +256,9 @@ def create_analyzers(definitions: List[ClassDefinition]) -> Dict[str, Analyzer]:
 
 
 def analyze(
-    definitions: List[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
+    definitions: List[ClassDefinition], unpacked_path: Path, app_version: str
 ) -> Dict[str, Union[Result, Exception]]:
-    name_to_analyzer = create_analyzers(definitions)
+    name_to_analyzer = create_analyzers(definitions, app_version)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():

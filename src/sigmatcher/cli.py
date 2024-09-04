@@ -119,6 +119,7 @@ def analyze(
     apktool_yaml_file = unpacked_path / "apktool.yml"
     with apktool_yaml_file.open() as f:
         apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+    assert isinstance(apk_version, str)
 
     results = sigmatcher.analysis.analyze(parsed_definitions, unpacked_path, apk_version)
     successful_results: Dict[str, MatchedClass] = {}

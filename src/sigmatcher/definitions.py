@@ -170,6 +170,7 @@ Signature: TypeAlias = Annotated[
 class Definition(pydantic.BaseModel, frozen=True):
     name: str
     signatures: Tuple[Signature, ...]
+    version_range: Optional[str] = None
 
     def get_signatures_for_version(self, app_version: Optional[str]) -> Tuple[Signature, ...]:
         if app_version is None:
@@ -181,6 +182,11 @@ class Definition(pydantic.BaseModel, frozen=True):
         for signature in self.get_signatures_for_version(app_version):
             dependencies.update(signature.get_dependencies())
         return dependencies
+
+    def is_in_version_range(self, app_version: Optional[str]) -> bool:
+        if app_version is None or self.version_range is None:
+            return True
+        return SpecifierSet(self.version_range).contains(app_version)
 
 
 class ExportDefinition(Definition, frozen=True):
