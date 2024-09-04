@@ -9,7 +9,7 @@ def parse_rg_line(line: str) -> Tuple[Path, int]:
     return Path(path), int(count)
 
 
-def rip_regex(pattern: Union[str, re.Pattern[str]], unpacked_path: Path) -> Dict[Path, int]:
+def rip_regex(pattern: "Union[str, re.Pattern[str]]", unpacked_path: Path) -> Dict[Path, int]:
     if isinstance(pattern, re.Pattern):
         pattern = pattern.pattern
     process = subprocess.run(

@@ -84,9 +84,9 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
 
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
-    signature: re.Pattern[str]
+    signature: "re.Pattern[str]"
 
-    MACRO_REGEX: ClassVar[re.Pattern[str]] = re.compile(r"\${(.*?)}")
+    MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
     def check_directory(self, directory: Path) -> List[Path]:
         return [

@@ -39,6 +39,15 @@ wheels = [
 ]
 
 [[package]]
+name = "eval-type-backport"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/ca/1601a9fa588867fe2ab6c19ed4c936929160d08a86597adf61bbd443fe57/eval_type_backport-0.2.0.tar.gz", hash = "sha256:68796cfbc7371ebf923f03bdf7bef415f3ec098aeced24e054b253a0e78f7b37", size = 8977 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/ac/aa3d8e0acbcd71140420bc752d7c9779cf3a2a3bb1d7ef30944e38b2cd39/eval_type_backport-0.2.0-py3-none-any.whl", hash = "sha256:ac2f73d30d40c5a30a80b8739a789d6bb5e49fdffa66d7912667e2015d9c9933", size = 5855 },
+]
+
+[[package]]
 name = "graphlib-backport"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -369,13 +378,14 @@ name = "sigmatcher"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "eval-type-backport", marker = "python_full_version < '3.9'" },
     { name = "graphlib-backport", marker = "python_full_version < '3.9'" },
     { name = "packaging" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "typer" },
-    { name = "typing-extensions", marker = "python_full_version < '3.9'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -394,6 +404,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "eval-type-backport", marker = "python_full_version < '3.9'" },
     { name = "graphlib-backport", marker = "python_full_version < '3.9'", specifier = ">=1.1.0,<2" },
     { name = "packaging", specifier = ">=24.1,<25" },
     { name = "platformdirs", specifier = ">=4.2.2,<5" },
@@ -402,7 +413,7 @@ requires-dist = [
     { name = "sigmatcher", extras = ["typing"], marker = "extra == 'all'" },
     { name = "typer", specifier = ">=0.12.3" },
     { name = "types-pyyaml", marker = "extra == 'typing'", specifier = ">=6.0.1,<7" },
-    { name = "typing-extensions", marker = "python_full_version < '3.9'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
 [package.metadata.requires-dev]

@@ -19,7 +19,8 @@ dependencies = [
     "platformdirs>=4.2.2,<5",
     "packaging>=24.1,<25",
     "graphlib_backport>=1.1.0,<2;python_version<'3.9'",
-    "typing-extensions;python_version<'3.9'",
+    "typing-extensions;python_version<'3.11'",
+    "eval_type_backport;python_version<'3.9'",
 ]
 
 [project.optional-dependencies]
