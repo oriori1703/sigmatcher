@@ -15,6 +15,7 @@ import platformdirs
 import rich
 import typer
 import yaml
+from rich.console import Console
 
 import sigmatcher.analysis
 from sigmatcher import __version__
@@ -23,6 +24,8 @@ from sigmatcher.formats import OutputFormat, convert_to_format
 from sigmatcher.results import MatchedClass
 
 app = typer.Typer()
+
+err_console = Console(stderr=True)
 
 cache_app = typer.Typer(help="Manage Sigmatcher's cache")
 app.add_typer(cache_app, name="cache")
@@ -121,7 +124,7 @@ def analyze(
     successful_results: Dict[str, MatchedClass] = {}
     for analyzer_name, result in results.items():
         if isinstance(result, Exception):
-            rich.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+            err_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
             continue
         if isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
