@@ -94,7 +94,14 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         ]
 
     def check_strings(self, strings: List[str]) -> List[str]:
-        return [string for string in strings if len(self.signature.findall(string)) == self.count]
+        results: List[str] = []
+        for string in strings:
+            match_count = len(self.signature.findall(string))
+            if match_count == 0:
+                continue
+            if self.count in (match_count, 0):
+                results.append(string)
+        return results
 
     def capture(self, value: str) -> Set[str]:
         match = self.signature.search(value)
