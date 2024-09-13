@@ -84,7 +84,9 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
 
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
-    signature: "re.Pattern[str]"
+    signature: "re.Pattern[str]" = pydantic.Field(
+        json_schema_extra={"x-intellij-language-injection": {"language": "RegExp"}}
+    )
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 

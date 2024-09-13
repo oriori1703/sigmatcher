@@ -211,7 +211,10 @@
         "signature": {
           "format": "regex",
           "title": "Signature",
-          "type": "string"
+          "type": "string",
+          "x-intellij-language-injection": {
+            "language": "RegExp"
+          }
         },
         "type": {
           "const": "glob",
@@ -302,7 +305,10 @@
         "signature": {
           "format": "regex",
           "title": "Signature",
-          "type": "string"
+          "type": "string",
+          "x-intellij-language-injection": {
+            "language": "RegExp"
+          }
         },
         "type": {
           "const": "regex",
