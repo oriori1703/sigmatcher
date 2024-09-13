@@ -3,10 +3,12 @@
     "ClassDefinition": {
       "properties": {
         "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
           "title": "Name",
           "type": "string"
         },
         "signatures": {
+          "description": "A list of signatures that define the definition.",
           "items": {
             "discriminator": {
               "mapping": {
@@ -41,6 +43,7 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the definition is valid.",
           "title": "Version Range"
         },
         "package": {
@@ -53,10 +56,12 @@
             }
           ],
           "default": null,
+          "description": "The package of the class.",
           "title": "Package"
         },
         "fields": {
           "default": [],
+          "description": "A list of field definitions.",
           "items": {
             "$ref": "#/$defs/FieldDefinition"
           },
@@ -65,6 +70,7 @@
         },
         "methods": {
           "default": [],
+          "description": "A list of method definitions.",
           "items": {
             "$ref": "#/$defs/MethodDefinition"
           },
@@ -73,6 +79,7 @@
         },
         "exports": {
           "default": [],
+          "description": "A list of export definitions.",
           "items": {
             "$ref": "#/$defs/ExportDefinition"
           },
@@ -90,10 +97,12 @@
     "ExportDefinition": {
       "properties": {
         "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
           "title": "Name",
           "type": "string"
         },
         "signatures": {
+          "description": "A list of signatures that define the definition.",
           "items": {
             "discriminator": {
               "mapping": {
@@ -128,6 +137,7 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the definition is valid.",
           "title": "Version Range"
         }
       },
@@ -141,10 +151,12 @@
     "FieldDefinition": {
       "properties": {
         "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
           "title": "Name",
           "type": "string"
         },
         "signatures": {
+          "description": "A list of signatures that define the definition.",
           "items": {
             "discriminator": {
               "mapping": {
@@ -179,6 +191,7 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the definition is valid.",
           "title": "Version Range"
         }
       },
@@ -201,14 +214,17 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the signature is valid.",
           "title": "Version Range"
         },
         "count": {
           "default": 1,
+          "description": "The number of times the signature should match in order to be considered a match.",
           "title": "Count",
           "type": "integer"
         },
         "signature": {
+          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match should be used to specify which what should be captured.\n\nCan include macros in the form of `${macro}`.",
           "format": "regex",
           "title": "Signature",
           "type": "string",
@@ -219,6 +235,7 @@
         "type": {
           "const": "glob",
           "default": "glob",
+          "description": "The type of the signature.",
           "enum": [
             "glob"
           ],
@@ -235,10 +252,12 @@
     "MethodDefinition": {
       "properties": {
         "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
           "title": "Name",
           "type": "string"
         },
         "signatures": {
+          "description": "A list of signatures that define the definition.",
           "items": {
             "discriminator": {
               "mapping": {
@@ -273,6 +292,7 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the definition is valid.",
           "title": "Version Range"
         }
       },
@@ -295,14 +315,17 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the signature is valid.",
           "title": "Version Range"
         },
         "count": {
           "default": 1,
+          "description": "The number of times the signature should match in order to be considered a match.",
           "title": "Count",
           "type": "integer"
         },
         "signature": {
+          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match should be used to specify which what should be captured.\n\nCan include macros in the form of `${macro}`.",
           "format": "regex",
           "title": "Signature",
           "type": "string",
@@ -313,6 +336,7 @@
         "type": {
           "const": "regex",
           "default": "regex",
+          "description": "The type of the signature.",
           "enum": [
             "regex"
           ],
@@ -338,20 +362,24 @@
             }
           ],
           "default": null,
+          "description": "The version range in which the signature is valid.",
           "title": "Version Range"
         },
         "count": {
           "default": 1,
+          "description": "The number of times the signature should match in order to be considered a match.",
           "title": "Count",
           "type": "integer"
         },
         "signature": {
+          "description": "A TreeSitter s-query used to check the signature.",
           "title": "Signature",
           "type": "string"
         },
         "type": {
           "const": "treesitter",
           "default": "treesitter",
+          "description": "The type of the signature.",
           "enum": [
             "treesitter"
           ],

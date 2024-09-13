@@ -39,9 +39,11 @@ class InvalidMacroModifierError(Exception):
         super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
-class BaseSignature(ABC, pydantic.BaseModel, frozen=True):
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
     version_range: Optional[str] = None
+    """The version range in which the signature is valid."""
     count: int = 1
+    """The number of times the signature should match in order to be considered a match."""
 
     @abstractmethod
     def check_directory(self, directory: Path) -> List[Path]:
@@ -87,6 +89,14 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: "re.Pattern[str]" = pydantic.Field(
         json_schema_extra={"x-intellij-language-injection": {"language": "RegExp"}}
     )
+    """
+    A regular expression used to check the signature.
+    
+    When used for capturing strings, if there is more than one match,
+    a named group called `match should be used to specify which what should be captured.
+    
+    Can include macros in the form of `${macro}`.
+    """
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
@@ -138,10 +148,12 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
 class RegexSignature(BaseRegexSignature, frozen=True):
     type: Literal["regex"] = "regex"
+    """The type of the signature."""
 
 
 class GlobSignature(BaseRegexSignature, frozen=True):
     type: Literal["glob"] = "glob"
+    """The type of the signature."""
 
     @pydantic.field_validator("signature", mode="before")
     @classmethod
@@ -153,7 +165,9 @@ class GlobSignature(BaseRegexSignature, frozen=True):
 
 class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: str
+    """A TreeSitter s-query used to check the signature."""
     type: Literal["treesitter"] = "treesitter"
+    """The type of the signature."""
 
     def check_directory(self, directory: Path) -> List[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
@@ -176,10 +190,13 @@ Signature: TypeAlias = Annotated[
 ]
 
 
-class Definition(pydantic.BaseModel, frozen=True):
+class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
     name: str
+    """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: Tuple[Signature, ...]
+    """A list of signatures that define the definition."""
     version_range: Optional[str] = None
+    """The version range in which the definition is valid."""
 
     def get_signatures_for_version(self, app_version: Optional[str]) -> Tuple[Signature, ...]:
         if app_version is None:
@@ -212,9 +229,13 @@ class MethodDefinition(Definition, frozen=True):
 
 class ClassDefinition(Definition, frozen=True):
     package: Optional[str] = None
+    """The package of the class."""
     fields: Tuple[FieldDefinition, ...] = ()
+    """A list of field definitions."""
     methods: Tuple[MethodDefinition, ...] = ()
+    """A list of method definitions."""
     exports: Tuple[ExportDefinition, ...] = ()
+    """A list of export definitions."""
 
 
 DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(List[ClassDefinition])
