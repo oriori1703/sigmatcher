@@ -12,6 +12,8 @@ else:
     from typing import Annotated
 
 import platformdirs
+import pydantic
+import pydantic_core
 import rich
 import typer
 import yaml
@@ -77,7 +79,17 @@ def schema(
     """
     Get the json schema for writing definitions.
     """
-    definitions_schema = DEFINITIONS_TYPE_ADAPTER.json_schema()
+
+    class SigmatcherGenerateJsonSchema(pydantic.json_schema.GenerateJsonSchema):
+        def generate(
+            self, schema: pydantic_core.CoreSchema, mode: pydantic.json_schema.JsonSchemaMode = "validation"
+        ) -> pydantic.json_schema.JsonSchemaValue:
+            json_schema = super().generate(schema, mode=mode)
+            json_schema["title"] = "Sigmatcher's Definitions"
+            json_schema["$schema"] = self.schema_dialect
+            return json_schema
+
+    definitions_schema = DEFINITIONS_TYPE_ADAPTER.json_schema(schema_generator=SigmatcherGenerateJsonSchema)
     definitions_schema_json = json.dumps(definitions_schema, indent=2)
     if output is not None:
         output.write_text(definitions_schema_json)
