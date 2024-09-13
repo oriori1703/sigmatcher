@@ -7,7 +7,23 @@ name = "sigmatcher"
 authors = [{ name = "Ori Perry", email = "oriori1703@gmail.com" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-classifiers = ["License :: OSI Approved :: MIT License"]
+classifiers = [
+    "Topic :: Security",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
 dynamic = ["version"]
 description = "Write signatures to automatically match java classes and methods between version"
 
