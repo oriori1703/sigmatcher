@@ -14,7 +14,6 @@ else:
 import platformdirs
 import pydantic
 import pydantic_core
-import rich
 import typer
 import yaml
 from rich.console import Console
@@ -27,7 +26,8 @@ from sigmatcher.results import MatchedClass
 
 app = typer.Typer()
 
-err_console = Console(stderr=True)
+stdout_console = Console(soft_wrap=True)
+stderr_console = Console(soft_wrap=True, stderr=True)
 
 cache_app = typer.Typer(help="Manage Sigmatcher's cache")
 app.add_typer(cache_app, name="cache")
@@ -50,12 +50,12 @@ def clean() -> None:
     """
     for path in CACHE_DIR_PATH.iterdir():
         shutil.rmtree(path)
-    rich.print("[green]Successfully cleaned the cache directory.[/green]")
+    stdout_console.print("[green]Successfully cleaned the cache directory.[/green]")
 
 
 def version_callback(value: bool) -> None:
     if value:
-        rich.print(f"Sigmatcher version: [green]{__version__}[/green]")
+        stdout_console.print(f"Sigmatcher version: [green]{__version__}[/green]")
         raise typer.Exit()
 
 
@@ -94,7 +94,7 @@ def schema(
     if output is not None:
         output.write_text(definitions_schema_json)
     else:
-        rich.print(definitions_schema_json)
+        stdout_console.print(definitions_schema_json)
 
 
 def apktool_callback(value: str) -> str:
@@ -137,12 +137,12 @@ def analyze(
     successful_results: Dict[str, MatchedClass] = {}
     for analyzer_name, result in results.items():
         if isinstance(result, Exception):
-            err_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+            stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
             continue
         if isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
 
-    rich.print(convert_to_format(successful_results, output_format))
+    stdout_console.print(convert_to_format(successful_results, output_format))
 
 
 def main() -> None:
