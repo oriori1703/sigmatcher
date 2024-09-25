@@ -111,6 +111,10 @@ def analyze(
     signatures: Annotated[
         List[Path], typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
     ],
+    output_file: Annotated[
+        Optional[Path],
+        typer.Option(help="Output path for the final mapping output"),
+    ] = None,
     output_format: Annotated[OutputFormat, typer.Option(help="The output mapping format")] = OutputFormat.RAW,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
@@ -142,7 +146,11 @@ def analyze(
         if isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
 
-    stdout_console.print(convert_to_format(successful_results, output_format))
+    mapping_output = convert_to_format(successful_results, output_format)
+    if output_file is None:
+        stdout_console.print(mapping_output)
+    else:
+        output_file.write_text(mapping_output)
 
 
 def main() -> None:
