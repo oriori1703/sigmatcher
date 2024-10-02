@@ -1,7 +1,7 @@
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
 
 import graphlib
 
@@ -225,7 +225,7 @@ class ExportAnalyzer(Analyzer):
         return f"{self.parent.name}.exports.{self.definition.name}"
 
 
-def create_analyzers(definitions: List[ClassDefinition], app_version: Optional[str]) -> Dict[str, Analyzer]:
+def create_analyzers(definitions: Sequence[ClassDefinition], app_version: Optional[str]) -> Dict[str, Analyzer]:
     name_to_analyzer: Dict[str, Analyzer] = {}
     for class_definition in definitions:
         if not class_definition.is_in_version_range(app_version):
@@ -256,7 +256,7 @@ def create_analyzers(definitions: List[ClassDefinition], app_version: Optional[s
 
 
 def analyze(
-    definitions: List[ClassDefinition], unpacked_path: Path, app_version: str
+    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str
 ) -> Dict[str, Union[Result, Exception]]:
     name_to_analyzer = create_analyzers(definitions, app_version)
 
