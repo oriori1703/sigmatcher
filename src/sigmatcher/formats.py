@@ -47,9 +47,9 @@ class EnigmaFormater(Formater):
 
     def convert_class(self, matched_class: MatchedClass) -> str:
         result = StringIO()
-        result.write(
-            f"CLASS {matched_class.new.to_java_representation()} {matched_class.original.to_java_representation()}\n"
-        )
+        new_class = matched_class.new.to_java_representation()[1:-1]
+        original_class = matched_class.original.to_java_representation()[1:-1]
+        result.write(f"CLASS {new_class} {original_class}\n")
         for field in matched_class.matched_fields:
             result.write(self.convert_field(field))
         for method in matched_class.matched_methods:
