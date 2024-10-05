@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -20,7 +20,7 @@ from rich.console import Console
 
 import sigmatcher.analysis
 from sigmatcher import __version__
-from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition
+from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.formats import OutputFormat, convert_to_format
 from sigmatcher.results import MatchedClass
 
@@ -109,7 +109,13 @@ def analyze(
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
     signatures: Annotated[
-        List[Path], typer.Option(help="Path to a signature file", exists=True, file_okay=True, dir_okay=False)
+        List[Path],
+        typer.Option(
+            help="Path to a signature file. If multiple files are given, they are merged together",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
     ],
     output_file: Annotated[
         Optional[Path],
@@ -120,12 +126,13 @@ def analyze(
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
 ) -> None:
-    parsed_definitions: List[ClassDefinition] = []
+    definition_groups: List[Tuple[ClassDefinition, ...]] = []
     for signature_file in signatures:
         with signature_file.open("r") as f:
             raw_yaml = yaml.safe_load(f)
-            definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
-            parsed_definitions.extend(definitions)
+        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+        definition_groups.append(tuple(definitions))
+    merged_definitions = merge_definitions_groups(definition_groups)
 
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = CACHE_DIR_PATH / apk_hash
@@ -137,7 +144,7 @@ def analyze(
         apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
     assert isinstance(apk_version, str)
 
-    results = sigmatcher.analysis.analyze(parsed_definitions, unpacked_path, apk_version)
+    results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
     successful_results: Dict[str, MatchedClass] = {}
     for analyzer_name, result in results.items():
         if isinstance(result, Exception):
