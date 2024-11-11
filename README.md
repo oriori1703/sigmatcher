@@ -82,7 +82,7 @@ Here's a basic example of what a signature file looks like:
 - name: "ConnectionManager"
   package: "com.example.package.network"
   signatures:
-    - signature: "ConnectionManager/openConnection: could not open connection due to a DNS error"
+    - signature: 'ConnectionManager/openConnection: could not open connection due to a DNS error'
       type: regex
       count: 1
   methods:
@@ -99,7 +99,7 @@ Here's a basic example of what a signature file looks like:
   fields:
     - name: "socket"
       signatures:
-        - signature: "^\.field private final (?P<match>.+:Ljava/net/Socket;)"
+        - signature: '^\.field private final (?P<match>.+:Ljava/net/Socket;)'
           type: regex
           count: 1
 ```
