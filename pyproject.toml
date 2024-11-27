@@ -43,6 +43,9 @@ dependencies = [
 typing = ["types-PyYAML>=6.0.1,<7"]
 all = ["sigmatcher[typing]"]
 
+[dependency-groups]
+dev =  ["ruff", "mypy"]
+
 [project.urls]
 Documentation = "https://github.com/oriori1703/sigmatcher#readme"
 Issues = "https://github.com/oriori1703/sigmatcher/issues"
@@ -50,9 +53,6 @@ Source = "https://github.com/oriori1703/sigmatcher"
 
 [project.scripts]
 sigmatcher = "sigmatcher.cli:main"
-
-[tool.uv]
-dev-dependencies = ["ruff", "mypy"]
 
 [tool.mypy]
 strict = true
