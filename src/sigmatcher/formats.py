@@ -9,18 +9,18 @@ import pydantic
 from sigmatcher.results import MatchedClass, MatchedField, MatchedMethod
 
 
-class Formater(ABC):
+class Formatter(ABC):
     @abstractmethod
     def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
         raise NotImplementedError()
 
 
-class RawFormater(Formater):
+class RawFormatter(Formatter):
     def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
         return pydantic.RootModel[Dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
 
 
-class LegacyFormater(Formater):
+class LegacyFormatter(Formatter):
     def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
         return json.dumps(
             {
@@ -36,7 +36,7 @@ class LegacyFormater(Formater):
         )
 
 
-class EnigmaFormater(Formater):
+class EnigmaFormatter(Formatter):
     def convert_field(self, field: MatchedField) -> str:
         return f"\tFIELD {field.new.name} {field.original.name} {field.new.type}\n"
 
@@ -69,10 +69,10 @@ class OutputFormat(str, enum.Enum):
     LEGACY = "legacy"
 
 
-FORMAT_TO_FORMATTER: Dict[OutputFormat, Type[Formater]] = {
-    OutputFormat.RAW: RawFormater,
-    OutputFormat.ENIGMA: EnigmaFormater,
-    OutputFormat.LEGACY: LegacyFormater,
+FORMAT_TO_FORMATTER: Dict[OutputFormat, Type[Formatter]] = {
+    OutputFormat.RAW: RawFormatter,
+    OutputFormat.ENIGMA: EnigmaFormatter,
+    OutputFormat.LEGACY: LegacyFormatter,
 }
 
 
