@@ -70,15 +70,15 @@ class MatchedMethod(pydantic.BaseModel):
 
 class Class(pydantic.BaseModel):
     name: str
-    pacakge: str
+    package: str
 
     @classmethod
     def from_java_representation(cls, java_representation: str) -> "Class":
         package, _, name = java_representation[1:-1].replace("/", ".").rpartition(".")
-        return cls(name=name, pacakge=package)
+        return cls(name=name, package=package)
 
     def to_java_representation(self) -> str:
-        return f"L{self.pacakge}.{self.name};".replace(".", "/")
+        return f"L{self.package}.{self.name};".replace(".", "/")
 
     @property
     def java(self) -> str:

@@ -25,7 +25,7 @@ class LegacyFormater(Formater):
         return json.dumps(
             {
                 matched_class.original.name: {
-                    "className": f"{matched_class.new.pacakge}.{matched_class.new.name}",
+                    "className": f"{matched_class.new.package}.{matched_class.new.name}",
                     "methods": {method.original.name: method.new.name for method in matched_class.matched_methods},
                     "fields": {field.original.name: field.new.name for field in matched_class.matched_fields},
                 }

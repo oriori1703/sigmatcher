@@ -118,7 +118,7 @@ class ClassAnalyzer(Analyzer):
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
         new_class = Class.from_java_representation(raw_class_name)
-        original_class = Class(name=self.definition.name, pacakge=self.definition.package or new_class.pacakge)
+        original_class = Class(name=self.definition.name, package=self.definition.package or new_class.package)
         return MatchedClass(
             original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[]
         )
