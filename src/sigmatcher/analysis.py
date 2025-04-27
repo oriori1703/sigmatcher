@@ -113,10 +113,34 @@ class ClassAnalyzer(Analyzer):
     search_root: Path
 
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedClass:
-        signatures = self.get_signatures_for_version()
-        class_matches = filter_signature_matches(
-            (signature, signature.resolve_macros(results).check_files([self.search_root])) for signature in signatures
-        )
+        signatures = list(self.get_signatures_for_version())
+
+        # Make sure the first signature is a whitelist signature in order to improve performance
+        whitelist_signature_index = 0
+        for i, signature in enumerate(signatures):
+            if signature.count != 0:
+                whitelist_signature_index = i
+                break
+        signatures.insert(0, signatures.pop(whitelist_signature_index))
+
+        class_matches = set(self.search_root.rglob("*.smali"))
+
+        for signature in signatures:
+            # Limit the search avoid too many arguments to ripgrep
+            if len(class_matches) < 100:
+                search_paths = list(class_matches)
+            else:
+                search_paths = [self.search_root]
+
+            # TODO: Dedeuplicate this and filter_signature_matches()
+            matches = signature.resolve_macros(results).check_files(search_paths)
+            if signature.count == 0:
+                class_matches.difference_update(matches)
+            else:
+                class_matches.intersection_update(matches)
+                if len(class_matches) == 0:
+                    break
+
         self.check_match_count(class_matches)
         match = next(iter(class_matches))
         with match.open() as f:
@@ -225,14 +249,15 @@ class ExportAnalyzer(Analyzer):
 
 
 def create_analyzers(
-    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
+    definitions: Sequence[ClassDefinition], search_root: Path, app_version: Optional[str]
 ) -> Dict[str, Analyzer]:
+    canonical_search_root = search_root.resolve()
     name_to_analyzer: Dict[str, Analyzer] = {}
     for class_definition in definitions:
         if not class_definition.is_in_version_range(app_version):
             continue
 
-        class_analyzer = ClassAnalyzer(class_definition, app_version, unpacked_path)
+        class_analyzer = ClassAnalyzer(class_definition, app_version, canonical_search_root)
         name_to_analyzer[class_definition.name] = class_analyzer
 
         for method_definition in class_definition.methods:
