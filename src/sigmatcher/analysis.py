@@ -50,14 +50,18 @@ def filter_signature_matches(
 ) -> Set[SignatureMatch]:
     whitelist_matches: Set[SignatureMatch] = set()
     blacklist_matches: Set[SignatureMatch] = set()
+    first_match = True
 
     for signature, matches in matches_per_signature:
         if signature.count == 0:
             blacklist_matches.update(matches)
-        elif whitelist_matches:
-            whitelist_matches.intersection_update(matches)
-        else:
+        elif first_match:
+            first_match = False
             whitelist_matches.update(matches)
+        else:
+            whitelist_matches.intersection_update(matches)
+            if not len(whitelist_matches):
+                return whitelist_matches
     whitelist_matches.difference_update(blacklist_matches)
     return whitelist_matches
 
