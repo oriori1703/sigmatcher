@@ -93,7 +93,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     A regular expression used to check the signature.
     
     When used for capturing strings, if there is more than one match,
-    a named group called `match should be used to specify which what should be captured.
+    a named group called `match` should be used to specify what should be captured.
     
     Can include macros in the form of `${macro}`.
     """
