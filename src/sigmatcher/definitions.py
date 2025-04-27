@@ -95,7 +95,13 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     When used for capturing strings, if there is more than one match,
     a named group called `match` should be used to specify what should be captured.
     
-    Can include macros in the form of `${macro}`.
+    Can include macros in the form of `${<result>.<property>}`.
+    Results are actually objects from `sigmatcher.results` package.
+    i.e. `Class`, `Field`, `Method`, `Export` objects.
+    Property could be any python property that the objects holds.
+
+    For example a macro could look like `${MyClass.fields.java}`, which would return something like
+    `Lf9/s;->a:LX/Y/Z/A02;`
     """
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")

@@ -224,7 +224,7 @@
           "type": "integer"
         },
         "signature": {
-          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match should be used to specify which what should be captured.\n\nCan include macros in the form of `${macro}`.",
+          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match` should be used to specify what should be captured.\n\nCan include macros in the form of `${<result>.<property>}`.\nResults are actually objects from `sigmatcher.results` package.\ni.e. `Class`, `Field`, `Method`, `Export` objects.\nProperty could be any python property that the objects holds.\n\nFor example a macro could look like `${MyClass.fields.java}`, which would return something like\n`Lf9/s;->a:LX/Y/Z/A02;`",
           "format": "regex",
           "title": "Signature",
           "type": "string",
@@ -236,9 +236,6 @@
           "const": "glob",
           "default": "glob",
           "description": "The type of the signature.",
-          "enum": [
-            "glob"
-          ],
           "title": "Type",
           "type": "string"
         }
@@ -325,7 +322,7 @@
           "type": "integer"
         },
         "signature": {
-          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match should be used to specify which what should be captured.\n\nCan include macros in the form of `${macro}`.",
+          "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match` should be used to specify what should be captured.\n\nCan include macros in the form of `${<result>.<property>}`.\nResults are actually objects from `sigmatcher.results` package.\ni.e. `Class`, `Field`, `Method`, `Export` objects.\nProperty could be any python property that the objects holds.\n\nFor example a macro could look like `${MyClass.fields.java}`, which would return something like\n`Lf9/s;->a:LX/Y/Z/A02;`",
           "format": "regex",
           "title": "Signature",
           "type": "string",
@@ -337,9 +334,6 @@
           "const": "regex",
           "default": "regex",
           "description": "The type of the signature.",
-          "enum": [
-            "regex"
-          ],
           "title": "Type",
           "type": "string"
         }
@@ -380,9 +374,6 @@
           "const": "treesitter",
           "default": "treesitter",
           "description": "The type of the signature.",
-          "enum": [
-            "treesitter"
-          ],
           "title": "Type",
           "type": "string"
         }
