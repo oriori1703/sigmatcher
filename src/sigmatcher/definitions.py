@@ -46,7 +46,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
     """The number of times the signature should match in order to be considered a match."""
 
     @abstractmethod
-    def check_directory(self, directory: Path) -> List[Path]:
+    def check_files(self, search_pathes: List[Path]) -> List[Path]:
         raise NotImplementedError()
 
     @abstractmethod
@@ -106,9 +106,11 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
-    def check_directory(self, directory: Path) -> List[Path]:
+    def check_files(self, search_pathes: List[Path]) -> List[Path]:
         return [
-            path for path, match_count in rip_regex(self.signature, directory).items() if self.count in (match_count, 0)
+            path.resolve()
+            for path, match_count in rip_regex(self.signature, search_pathes).items()
+            if self.count in (match_count, 0)
         ]
 
     def check_strings(self, strings: List[str]) -> List[str]:
@@ -175,7 +177,7 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     type: Literal["treesitter"] = "treesitter"
     """The type of the signature."""
 
-    def check_directory(self, directory: Path) -> List[Path]:
+    def check_files(self, search_pathes: List[Path]) -> List[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
     def check_strings(self, strings: List[str]) -> List[str]:

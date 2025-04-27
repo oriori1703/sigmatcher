@@ -115,7 +115,7 @@ class ClassAnalyzer(Analyzer):
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedClass:
         signatures = self.get_signatures_for_version()
         class_matches = filter_signature_matches(
-            (signature, signature.resolve_macros(results).check_directory(self.search_root)) for signature in signatures
+            (signature, signature.resolve_macros(results).check_files([self.search_root])) for signature in signatures
         )
         self.check_match_count(class_matches)
         match = next(iter(class_matches))
