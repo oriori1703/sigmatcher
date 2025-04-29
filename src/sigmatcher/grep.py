@@ -1,7 +1,7 @@
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, Iterable, Tuple, Union
 
 
 def parse_rg_line(line: str) -> Tuple[Path, int]:
@@ -9,9 +9,10 @@ def parse_rg_line(line: str) -> Tuple[Path, int]:
     return Path(path), int(count)
 
 
-def rip_regex(pattern: "Union[str, re.Pattern[str]]", search_paths: List[Path]) -> Dict[Path, int]:
+def rip_regex(pattern: "Union[str, re.Pattern[str]]", search_paths: Iterable[Path]) -> Dict[Path, int]:
     if isinstance(pattern, re.Pattern):
         pattern = pattern.pattern
+    str_search_paths = [str(path) for path in search_paths]
     args = [
         "rg",
         "--count-matches",
@@ -20,15 +21,15 @@ def rip_regex(pattern: "Union[str, re.Pattern[str]]", search_paths: List[Path]) 
         "--hidden",
         "--regexp",
         pattern,
-        *[str(path) for path in search_paths],
+        *str_search_paths,
     ]
     process = subprocess.run(args, stdout=subprocess.PIPE, text=True)
 
     if bool(process.returncode):
         return {}
 
-    if len(search_paths) == 1 and search_paths[0].is_file():
+    if len(str_search_paths) == 1 and (path := next(iter(search_paths))).is_file():
         # if the search path is a single file, ripgrep will not print the filename
-        return {search_paths[0]: int(process.stdout)}
+        return {path: int(process.stdout)}
 
     return dict(parse_rg_line(line) for line in process.stdout.splitlines())
