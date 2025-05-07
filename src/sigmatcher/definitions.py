@@ -149,7 +149,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         for macro in self._get_raw_macros:
             result_identifier, _, result_modifier = macro.rpartition(".")
             resolved_macro = self.resolve_macro(results, result_identifier, result_modifier)
-            new_pattern = new_pattern.replace(f"${{{macro}}}", resolved_macro)
+            new_pattern = new_pattern.replace(f"${{{macro}}}", re.escape(resolved_macro))
 
         return self.model_copy(update={"signature": re.compile(new_pattern)})
 
