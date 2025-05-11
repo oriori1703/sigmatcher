@@ -114,6 +114,8 @@ class ClassAnalyzer(Analyzer):
 
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedClass:
         signatures = list(self.get_signatures_for_version())
+        if len(signatures) == 0:
+            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
 
         # Make sure the first signature is a whitelist signature in order to improve performance
         whitelist_signature_index = 0
@@ -164,6 +166,12 @@ class FieldAnalyzer(Analyzer):
 
         raw_class = parent_class_result.smali_file.read_text()
         signatures = self.get_signatures_for_version()
+        if len(signatures) == 0:
+            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+        if len(signatures) > 1:
+            raise NoMatchesError(
+                f"Found {len(signatures)} signatures for {self.name}. Field definitions should only have one."
+            )
         signature = signatures[0].resolve_macros(results)
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
@@ -197,6 +205,9 @@ class MethodAnalyzer(Analyzer):
         methods = [".method" + method for method in raw_methods]
 
         signatures = self.get_signatures_for_version()
+        if len(signatures) == 0:
+            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+
         method_matches = filter_signature_matches(
             (signature, signature.resolve_macros(results).check_strings(methods)) for signature in signatures
         )
@@ -234,6 +245,13 @@ class ExportAnalyzer(Analyzer):
         raw_class = parent_class_result.smali_file.read_text()
         signatures = self.get_signatures_for_version()
         signature = signatures[0].resolve_macros(results)
+        if len(signatures) == 0:
+            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+        if len(signatures) > 1:
+            raise NoMatchesError(
+                f"Found {len(signatures)} signatures for {self.name}. Export definitions should only have one."
+            )
+
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         export_value = next(iter(captured_names))
