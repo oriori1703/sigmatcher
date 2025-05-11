@@ -39,8 +39,15 @@ class InvalidMacroModifierError(Exception):
         super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
+def is_in_version_range(app_version: Optional[str], version_range: Union[str, List[str], None]) -> bool:
+    if app_version is None or version_range is None:
+        return True
+    ranges = version_range if isinstance(version_range, list) else [version_range]
+    return any(SpecifierSet(spec).contains(app_version) for spec in ranges)
+
+
 class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
-    version_range: Optional[str] = None
+    version_range: Union[str, List[str], None] = None
     """The version range in which the signature is valid."""
     count: int = 1
     """The number of times the signature should match in order to be considered a match."""
@@ -79,10 +86,8 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
     def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
         raise NotImplementedError()
 
-    def is_in_version_range(self, app_version: str) -> bool:
-        if self.version_range is None:
-            return True
-        return SpecifierSet(self.version_range).contains(app_version)
+    def is_in_version_range(self, app_version: Optional[str]) -> bool:
+        return is_in_version_range(app_version, self.version_range)
 
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
@@ -203,7 +208,7 @@ class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True)
     """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: Tuple[Signature, ...]
     """A list of signatures that define the definition."""
-    version_range: Optional[str] = None
+    version_range: Union[str, List[str], None] = None
     """The version range in which the definition is valid."""
 
     def get_signatures_for_version(self, app_version: Optional[str]) -> Tuple[Signature, ...]:
@@ -218,9 +223,7 @@ class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True)
         return dependencies
 
     def is_in_version_range(self, app_version: Optional[str]) -> bool:
-        if app_version is None or self.version_range is None:
-            return True
-        return SpecifierSet(self.version_range).contains(app_version)
+        return is_in_version_range(app_version, self.version_range)
 
 
 class ExportDefinition(Definition, frozen=True):
