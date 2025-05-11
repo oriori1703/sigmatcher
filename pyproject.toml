@@ -37,6 +37,8 @@ dependencies = [
     "graphlib_backport>=1.1.0,<2;python_version<'3.9'",
     "typing-extensions;python_version<'3.11'",
     "eval_type_backport;python_version<'3.9'",
+    # Workaround until typer supports click 8.2 (https://github.com/fastapi/typer/pull/1145)
+    "click<8.2",
 ]
 
 [project.optional-dependencies]
