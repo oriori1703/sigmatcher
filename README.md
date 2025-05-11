@@ -41,9 +41,11 @@ To get started with sigmatcher, follow these steps:
    information. See the [Creating Signature Files](#creating-signature-files) section example for the format.
 2. **Analyze an APK**: With your signature file ready, you can now analyze an APK to find matches for your signatures.
    Use the sigmatcher analyze command, specifying the path to the APK and the signature file(s):
+
    ```shell
    sigmatcher analyze --apk path/to/your/app.apk --signatures path/to/your/signature_file.yaml
    ```
+
    This command will decode the APK, apply the signatures, and output the analysis results, highlighting matched
    classes, methods and fields.
 
@@ -106,18 +108,18 @@ Here's a basic example of what a signature file looks like:
 
 #### Key Components
 
-* name: The name of the class, method, or field.
-* methods: A list of method definitions within a class. Follows a similar structure to the class definition.
-* fields: A list of field definitions within a class. Follows a similar structure to the class definition.
-* exports: A list of export definitions within a class. Exports can be any string in the code. They are mainly used in
+- name: The name of the class, method, or field.
+- methods: A list of method definitions within a class. Follows a similar structure to the class definition.
+- fields: A list of field definitions within a class. Follows a similar structure to the class definition.
+- exports: A list of export definitions within a class. Exports can be any string in the code. They are mainly used in
   combination with macros to create more complex signatures.
-* signatures: A list of signatures for the class, method, or field. Each signature includes:
-    * type: The type of signature (for now only `regex` and `glob`).
-    * signature: The pattern to match, depending on the signature type.
+- signatures: A list of signatures for the class, method, or field. Each signature includes:
+  - type: The type of signature (for now only `regex` and `glob`).
+  - signature: The pattern to match, depending on the signature type.
       For classes and methods they just need to match anywhere within the class/method. For fields and exports, they
       need to match the full field expression/export string, i.e. using the `match` capture group for regex signatures.
-    * count: The number of times the signature should appear to be considered a match.
-    * version_range: Optional. Specifies the application versions this signature applies to, using version specifiers
+  - count: The number of times the signature should appear to be considered a match.
+  - version_range: Optional. Specifies the application versions this signature applies to, using version specifiers
       like those used by pip and described in
       [PEP-440](https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers).
 
