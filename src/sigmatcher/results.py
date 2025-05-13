@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 if sys.version_info < (3, 10):
     from typing_extensions import TypeAlias
@@ -88,9 +88,9 @@ class Class(pydantic.BaseModel):
 class MatchedClass(pydantic.BaseModel):
     original: Class
     new: Class
-    smali_file: Path = pydantic.Field(..., exclude=True)
     matched_methods: List[MatchedMethod]
     matched_fields: List[MatchedField]
+    smali_file: Optional[Path] = pydantic.Field(default=None, exclude=True)
 
 
 Result: TypeAlias = Union[MatchedClass, MatchedField, MatchedMethod, MatchedExport]
