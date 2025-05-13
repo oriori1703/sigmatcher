@@ -137,7 +137,8 @@ def analyze(
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = CACHE_DIR_PATH / apk_hash
     if not unpacked_path.exists():
-        subprocess.run([apktool, "decode", apk, "--output", unpacked_path])
+        subprocess.run([apktool, "decode", apk, "-f", "--output", unpacked_path.with_suffix(".tmp")])
+        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
     apktool_yaml_file = unpacked_path / "apktool.yml"
     with apktool_yaml_file.open() as f:
