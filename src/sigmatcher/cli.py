@@ -146,11 +146,11 @@ def analyze(
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
     successful_results: Dict[str, MatchedClass] = {}
+    unsuccessful_results: Dict[str, Exception] = {}
     for analyzer_name, result in results.items():
         if isinstance(result, Exception):
-            stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
-            continue
-        if isinstance(result, MatchedClass):
+            unsuccessful_results[analyzer_name] = result
+        elif isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
 
     mapping_output = convert_to_format(successful_results, output_format)
@@ -158,6 +158,9 @@ def analyze(
         stdout_console.print(mapping_output)
     else:
         output_file.write_text(mapping_output)
+
+    for analyzer_name, result in unsuccessful_results.items():
+        stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
 
 
 def main() -> None:
