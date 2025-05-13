@@ -154,6 +154,7 @@ class FieldAnalyzer(Analyzer):
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
+        assert isinstance(parent_class_result.smali_file, Path)
 
         raw_class = parent_class_result.smali_file.read_text()
         signatures = self.get_signatures_for_version()
@@ -191,6 +192,7 @@ class MethodAnalyzer(Analyzer):
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
+        assert isinstance(parent_class_result.smali_file, Path)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = {".method" + method for method in raw_methods}
@@ -234,6 +236,7 @@ class ExportAnalyzer(Analyzer):
     def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
+        assert isinstance(parent_class_result.smali_file, Path)
 
         raw_class = parent_class_result.smali_file.read_text()
         signatures = self.get_signatures_for_version()

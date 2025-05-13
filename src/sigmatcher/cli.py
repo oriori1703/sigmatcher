@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ from rich.console import Console
 import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
-from sigmatcher.formats import OutputFormat, convert_to_format
+from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass
 
 app = typer.Typer()
@@ -104,6 +105,33 @@ def apktool_callback(value: str) -> str:
 
 
 @app.command()
+def convert(
+    input_file: Annotated[
+        Optional[Path],
+        typer.Option(help="Path for the input mapping output", exists=True, file_okay=True, dir_okay=False),
+    ] = None,
+    input_format: Annotated[
+        MappingFormat, typer.Option(help="The mapping format of the input file")
+    ] = MappingFormat.ENIGMA,
+    output_file: Annotated[Optional[Path], typer.Option(help="Path for the output mapping file")] = None,
+    output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
+) -> None:
+    if input_file is not None:
+        raw_input = input_file.read_text()
+    elif isinstance(sys.stdin, io.TextIOBase):
+        raw_input = sys.stdin.read()
+    else:
+        raise ValueError("Cannot read from stdin, please provide an input file")
+    intermidiate_mappings = parse_from_format(raw_input, input_format)
+
+    mapping_output = convert_to_format(intermidiate_mappings, output_format)
+    if output_file is None:
+        stdout_console.print(mapping_output)
+    else:
+        output_file.write_text(mapping_output)
+
+
+@app.command()
 def analyze(
     apk: Annotated[
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
@@ -121,7 +149,7 @@ def analyze(
         Optional[Path],
         typer.Option(help="Output path for the final mapping output"),
     ] = None,
-    output_format: Annotated[OutputFormat, typer.Option(help="The output mapping format")] = OutputFormat.RAW,
+    output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
