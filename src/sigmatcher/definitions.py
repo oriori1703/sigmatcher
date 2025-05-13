@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Dict, List, Optional, Sequence, Set, Tuple, TypeVar, Union
+from typing import ClassVar, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
 
 if sys.version_info < (3, 9):
     from typing_extensions import Annotated
@@ -53,11 +53,11 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
     """The number of times the signature should match in order to be considered a match."""
 
     @abstractmethod
-    def check_files(self, search_pathes: List[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
         raise NotImplementedError()
 
     @abstractmethod
-    def check_strings(self, strings: List[str]) -> List[str]:
+    def check_strings(self, strings: Iterable[str]) -> List[str]:
         raise NotImplementedError()
 
     @abstractmethod
@@ -111,14 +111,14 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
-    def check_files(self, search_pathes: List[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
         return [
             path.resolve()
             for path, match_count in rip_regex(self.signature, search_pathes).items()
             if self.count in (match_count, 0)
         ]
 
-    def check_strings(self, strings: List[str]) -> List[str]:
+    def check_strings(self, strings: Iterable[str]) -> List[str]:
         results: List[str] = []
         for string in strings:
             match_count = len(self.signature.findall(string))
@@ -182,10 +182,10 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     type: Literal["treesitter"] = "treesitter"
     """The type of the signature."""
 
-    def check_files(self, search_pathes: List[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def check_strings(self, strings: List[str]) -> List[str]:
+    def check_strings(self, strings: Iterable[str]) -> List[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
     def capture(self, value: str) -> Set[str]:

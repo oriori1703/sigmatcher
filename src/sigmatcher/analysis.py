@@ -1,7 +1,7 @@
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
 
 import graphlib
 
@@ -46,24 +46,21 @@ SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 
 def filter_signature_matches(
-    matches_per_signature: Iterable[Tuple[Signature, List[SignatureMatch]]],
+    signatures: Iterable[Signature],
+    initial_matches: Set[SignatureMatch],
+    check_signature_callback: Callable[[Signature, Set[SignatureMatch]], List[SignatureMatch]],
 ) -> Set[SignatureMatch]:
-    whitelist_matches: Set[SignatureMatch] = set()
-    blacklist_matches: Set[SignatureMatch] = set()
-    first_match = True
-
-    for signature, matches in matches_per_signature:
+    all_matches: Set[SignatureMatch] = initial_matches
+    for signature in signatures:
+        signature_match = check_signature_callback(signature, all_matches)
         if signature.count == 0:
-            blacklist_matches.update(matches)
-        elif first_match:
-            first_match = False
-            whitelist_matches.update(matches)
+            all_matches.difference_update(signature_match)
         else:
-            whitelist_matches.intersection_update(matches)
-            if not len(whitelist_matches):
-                return whitelist_matches
-    whitelist_matches.difference_update(blacklist_matches)
-    return whitelist_matches
+            all_matches.intersection_update(signature_match)
+            if len(all_matches) == 0:
+                break
+
+    return all_matches
 
 
 @dataclasses.dataclass(frozen=True)
@@ -125,23 +122,17 @@ class ClassAnalyzer(Analyzer):
                 break
         signatures.insert(0, signatures.pop(whitelist_signature_index))
 
-        class_matches = set(self.search_root.rglob("*.smali"))
-
-        for signature in signatures:
+        def check_signature_callback(signature: Signature, matches: Set[Path]) -> List[Path]:
             # Limit the search avoid too many arguments to ripgrep
-            if len(class_matches) < 100:
-                search_paths = list(class_matches)
+            if len(matches) < 100:
+                search_paths = matches
             else:
                 search_paths = [self.search_root]
 
-            # TODO: Dedeuplicate this and filter_signature_matches()
-            matches = signature.resolve_macros(results).check_files(search_paths)
-            if signature.count == 0:
-                class_matches.difference_update(matches)
-            else:
-                class_matches.intersection_update(matches)
-                if len(class_matches) == 0:
-                    break
+            return signature.resolve_macros(results).check_files(search_paths)
+
+        initial_matches = set(self.search_root.rglob("*.smali"))
+        class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
 
         self.check_match_count(class_matches)
         match = next(iter(class_matches))
@@ -202,15 +193,17 @@ class MethodAnalyzer(Analyzer):
         assert isinstance(parent_class_result, MatchedClass)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
-        methods = [".method" + method for method in raw_methods]
+        methods = {".method" + method for method in raw_methods}
 
         signatures = self.get_signatures_for_version()
         if len(signatures) == 0:
             raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
 
-        method_matches = filter_signature_matches(
-            (signature, signature.resolve_macros(results).check_strings(methods)) for signature in signatures
-        )
+        def check_signature_callback(signature: Signature, matches: Set[str]) -> List[str]:
+            return signature.resolve_macros(results).check_strings(matches)
+
+        method_matches = filter_signature_matches(signatures, methods, check_signature_callback)
+
         self.check_match_count(method_matches)
         match = next(iter(method_matches))
         method_definition_line, _, _ = match.partition("\n")
