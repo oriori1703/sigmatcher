@@ -210,7 +210,13 @@ FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
 
 
 def convert_to_format(matched_classes: Dict[str, MatchedClass], output_format: MappingFormat) -> str:
-    return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
+    try:
+        return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
+    except KeyError:
+        raise ValueError(
+            f"The provided output format is not supported yet: {output_format}."
+            f"Supported formats are: {', '.join(FORMAT_TO_FORMATTER)}"
+        ) from None
 
 
 FORMAT_TO_PARSER: Dict[MappingFormat, Type[Parser]] = {
@@ -225,6 +231,6 @@ def parse_from_format(raw_input: str, input_format: MappingFormat) -> Dict[str, 
         return FORMAT_TO_PARSER[input_format]().parse(raw_input)
     except KeyError:
         raise ValueError(
-            f"The rovided input format is not supported yet: {input_format}."
+            f"The provided input format is not supported yet: {input_format}."
             f"Supported formats are: {', '.join(FORMAT_TO_PARSER)}"
         ) from None
