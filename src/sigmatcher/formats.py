@@ -9,21 +9,26 @@ import pydantic
 from sigmatcher.results import Class, Field, MatchedClass, MatchedField, MatchedMethod, Method
 
 
-class MappingFormat(str, enum.Enum):
-    RAW = "raw"
-    ENIGMA = "enigma"
-    LEGACY = "legacy"
-
-
 class Formatter(ABC):
     @abstractmethod
     def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
         raise NotImplementedError()
 
 
+class Parser(ABC):
+    @abstractmethod
+    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
+        raise NotImplementedError()
+
+
 class RawFormatter(Formatter):
     def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
         return pydantic.RootModel[Dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
+
+
+class RawParser(Parser):
+    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
+        return pydantic.RootModel[Dict[str, MatchedClass]].model_validate_json(raw_input).root
 
 
 class LegacyFormatter(Formatter):
@@ -69,28 +74,6 @@ class EnigmaFormatter(Formatter):
         return final.getvalue()
 
 
-FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
-    MappingFormat.RAW: RawFormatter,
-    MappingFormat.ENIGMA: EnigmaFormatter,
-    MappingFormat.LEGACY: LegacyFormatter,
-}
-
-
-def convert_to_format(matched_classes: Dict[str, MatchedClass], output_format: MappingFormat) -> str:
-    return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
-
-
-class Parser(ABC):
-    @abstractmethod
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
-        raise NotImplementedError()
-
-
-class RawParser(Parser):
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
-        return pydantic.RootModel[Dict[str, MatchedClass]].model_validate_json(raw_input).root
-
-
 class EnigmaParser(Parser):
     def _parse_class(self, components: List[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
@@ -128,6 +111,23 @@ class EnigmaParser(Parser):
                 result[current_class].matched_methods.append(self._parse_method(components))
 
         return result
+
+
+class MappingFormat(str, enum.Enum):
+    RAW = "raw"
+    ENIGMA = "enigma"
+    LEGACY = "legacy"
+
+
+FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
+    MappingFormat.RAW: RawFormatter,
+    MappingFormat.ENIGMA: EnigmaFormatter,
+    MappingFormat.LEGACY: LegacyFormatter,
+}
+
+
+def convert_to_format(matched_classes: Dict[str, MatchedClass], output_format: MappingFormat) -> str:
+    return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
 
 
 FORMAT_TO_PARSER: Dict[MappingFormat, Type[Parser]] = {
