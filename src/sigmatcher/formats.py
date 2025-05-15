@@ -94,20 +94,20 @@ class RawParser(Parser):
 class EnigmaParser(Parser):
     def _parse_class(self, components: list[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
-        original_class = Class.from_java_representation(f"L{components[2]};")
+        original_class = Class.from_java_representation(f"L{components[-1]};")
         return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[])
 
     def _parse_field(self, components: list[str]) -> MatchedField:
-        new_field = Field(name=components[1], type=components[3])
-        original_field = Field(name=components[2], type="")
+        new_field = Field(name=components[1], type=components[-1])
+        original_field = Field(name=components[-2], type="")
         return MatchedField(new=new_field, original=original_field)
 
     def _parse_method(self, components: list[str]) -> MatchedMethod:
-        method_types = components[3]
+        method_types = components[-1]
         argument_type, return_type = method_types[1:].split(")")
 
         new_method = Method(name=components[1], argument_types=argument_type, return_type=return_type)
-        original_method = Method(name=components[2], argument_types="", return_type="")
+        original_method = Method(name=components[-2], argument_types="", return_type="")
         return MatchedMethod(new=new_method, original=original_method)
 
     def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
