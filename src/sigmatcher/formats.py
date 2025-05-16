@@ -2,7 +2,7 @@ import enum
 import json
 from abc import ABC, abstractmethod
 from io import StringIO
-from typing import Dict, Optional, Type
+from typing import Dict, List, Optional, Type
 
 import pydantic
 
@@ -92,17 +92,17 @@ class RawParser(Parser):
 
 
 class EnigmaParser(Parser):
-    def _parse_class(self, components: list[str]) -> MatchedClass:
+    def _parse_class(self, components: List[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
         original_class = Class.from_java_representation(f"L{components[-1]};")
         return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[])
 
-    def _parse_field(self, components: list[str]) -> MatchedField:
+    def _parse_field(self, components: List[str]) -> MatchedField:
         new_field = Field(name=components[1], type=components[-1])
         original_field = Field(name=components[-2], type="")
         return MatchedField(new=new_field, original=original_field)
 
-    def _parse_method(self, components: list[str]) -> MatchedMethod:
+    def _parse_method(self, components: List[str]) -> MatchedMethod:
         method_types = components[-1]
         argument_type, return_type = method_types[1:].split(")")
 
