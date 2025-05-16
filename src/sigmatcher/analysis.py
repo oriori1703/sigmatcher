@@ -127,7 +127,7 @@ class ClassAnalyzer(Analyzer):
             if len(matches) < 100:
                 search_paths = matches
             else:
-                search_paths = [self.search_root]
+                search_paths = {self.search_root}
 
             return signature.resolve_macros(results).check_files(search_paths)
 
