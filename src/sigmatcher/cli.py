@@ -14,6 +14,7 @@ else:
 
 import platformdirs
 import pydantic
+import pydantic.json_schema
 import pydantic_core
 import typer
 import yaml
