@@ -1,9 +1,9 @@
 import dataclasses
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
-
 import graphlib
+from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
+from pathlib import Path
+from typing import Callable, Optional, TypeVar, Union
 
 from sigmatcher.definitions import (
     ClassDefinition,
@@ -47,10 +47,10 @@ SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 def filter_signature_matches(
     signatures: Iterable[Signature],
-    initial_matches: Set[SignatureMatch],
-    check_signature_callback: Callable[[Signature, Set[SignatureMatch]], List[SignatureMatch]],
-) -> Set[SignatureMatch]:
-    all_matches: Set[SignatureMatch] = initial_matches
+    initial_matches: set[SignatureMatch],
+    check_signature_callback: Callable[[Signature, set[SignatureMatch]], list[SignatureMatch]],
+) -> set[SignatureMatch]:
+    all_matches: set[SignatureMatch] = initial_matches
     for signature in signatures:
         signature_match = check_signature_callback(signature, all_matches)
         if signature.count == 0:
@@ -69,20 +69,20 @@ class Analyzer(ABC):
     app_version: Optional[str]
 
     @abstractmethod
-    def analyze(self, results: Dict[str, Union[Result, Exception]]) -> Result:
+    def analyze(self, results: dict[str, Union[Result, Exception]]) -> Result:
         pass
 
-    def check_match_count(self, matches: Optional[Set[SignatureMatch]]) -> None:
+    def check_match_count(self, matches: Optional[set[SignatureMatch]]) -> None:
         if matches is None or len(matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(matches) > 1:
             raise TooManyMatchesError(f"Found too many matches for {self.name}: {matches}")
 
-    def get_dependencies(self) -> Set[str]:
+    def get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)
 
-    def check_dependencies(self, results: Dict[str, Union[Result, Exception]]) -> None:
-        failed_dependencies: List[str] = []
+    def check_dependencies(self, results: dict[str, Union[Result, Exception]]) -> None:
+        failed_dependencies: list[str] = []
         for dependency_name in self.get_dependencies():
             child_result = results[dependency_name]
             if isinstance(child_result, Exception):
@@ -93,7 +93,7 @@ class Analyzer(ABC):
                 f"Skipped {self.name} because of the following dependencies failed: {failed_dependencies}"
             )
 
-    def get_signatures_for_version(self) -> Tuple[Signature, ...]:
+    def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
 
     @property
@@ -109,7 +109,7 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
     search_root: Path
 
-    def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedClass:
+    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedClass:
         signatures = list(self.get_signatures_for_version())
         if len(signatures) == 0:
             raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
@@ -122,7 +122,7 @@ class ClassAnalyzer(Analyzer):
                 break
         signatures.insert(0, signatures.pop(whitelist_signature_index))
 
-        def check_signature_callback(signature: Signature, matches: Set[Path]) -> List[Path]:
+        def check_signature_callback(signature: Signature, matches: set[Path]) -> list[Path]:
             # Limit the search avoid too many arguments to ripgrep
             if len(matches) < 100:
                 search_paths = matches
@@ -151,7 +151,7 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedField:
+    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -176,7 +176,7 @@ class FieldAnalyzer(Analyzer):
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
-    def get_dependencies(self) -> Set[str]:
+    def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
@@ -189,7 +189,7 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedMethod:
+    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -201,7 +201,7 @@ class MethodAnalyzer(Analyzer):
         if len(signatures) == 0:
             raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
 
-        def check_signature_callback(signature: Signature, matches: Set[str]) -> List[str]:
+        def check_signature_callback(signature: Signature, matches: set[str]) -> list[str]:
             return signature.resolve_macros(results).check_strings(matches)
 
         method_matches = filter_signature_matches(signatures, methods, check_signature_callback)
@@ -220,7 +220,7 @@ class MethodAnalyzer(Analyzer):
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
-    def get_dependencies(self) -> Set[str]:
+    def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
@@ -233,7 +233,7 @@ class ExportAnalyzer(Analyzer):
     definition: ExportDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: Dict[str, Union[Result, Exception]]) -> MatchedExport:
+    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -254,7 +254,7 @@ class ExportAnalyzer(Analyzer):
 
         return MatchedExport.from_value(export_value)
 
-    def get_dependencies(self) -> Set[str]:
+    def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
@@ -264,9 +264,9 @@ class ExportAnalyzer(Analyzer):
 
 def create_analyzers(
     definitions: Sequence[ClassDefinition], search_root: Path, app_version: Optional[str]
-) -> Dict[str, Analyzer]:
+) -> dict[str, Analyzer]:
     canonical_search_root = search_root.resolve()
-    name_to_analyzer: Dict[str, Analyzer] = {}
+    name_to_analyzer: dict[str, Analyzer] = {}
     for class_definition in definitions:
         if not class_definition.is_in_version_range(app_version):
             continue
@@ -297,14 +297,14 @@ def create_analyzers(
 
 def analyze(
     definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
-) -> Dict[str, Union[Result, Exception]]:
+) -> dict[str, Union[Result, Exception]]:
     name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         sorter.add(analyzer.name, *analyzer.get_dependencies())
 
-    results: Dict[str, Union[Result, Exception]] = {}
+    results: dict[str, Union[Result, Exception]] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:

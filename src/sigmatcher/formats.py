@@ -2,7 +2,7 @@ import enum
 import json
 from abc import ABC, abstractmethod
 from io import StringIO
-from typing import Dict, List, Literal, Optional, Tuple, Type
+from typing import Literal, Optional
 
 import pydantic
 import pydantic.alias_generators
@@ -12,28 +12,28 @@ from sigmatcher.results import Class, Field, MatchedClass, MatchedField, Matched
 
 class Formatter(ABC):
     @abstractmethod
-    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
+    def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         raise NotImplementedError()
 
 
 class Parser(ABC):
     @abstractmethod
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
+    def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         raise NotImplementedError()
 
 
 class RawFormatter(Formatter):
-    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
-        return pydantic.RootModel[Dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
+    def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
+        return pydantic.RootModel[dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
 
 
 class RawParser(Parser):
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
-        return pydantic.RootModel[Dict[str, MatchedClass]].model_validate_json(raw_input).root
+    def parse(self, raw_input: str) -> dict[str, MatchedClass]:
+        return pydantic.RootModel[dict[str, MatchedClass]].model_validate_json(raw_input).root
 
 
 class LegacyFormatter(Formatter):
-    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
+    def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         return json.dumps(
             {
                 matched_class.original.name: {
@@ -68,7 +68,7 @@ class EnigmaFormatter(Formatter):
             result.write(self.convert_method(method))
         return result.getvalue()
 
-    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
+    def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         final = StringIO()
         for matched_class in matched_classes.values():
             final.write(self.convert_class(matched_class))
@@ -76,17 +76,17 @@ class EnigmaFormatter(Formatter):
 
 
 class EnigmaParser(Parser):
-    def _parse_class(self, components: List[str]) -> MatchedClass:
+    def _parse_class(self, components: list[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
         original_class = Class.from_java_representation(f"L{components[-1]};")
         return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[])
 
-    def _parse_field(self, components: List[str]) -> MatchedField:
+    def _parse_field(self, components: list[str]) -> MatchedField:
         new_field = Field(name=components[1], type=components[-1])
         original_field = Field(name=components[-2], type="")
         return MatchedField(new=new_field, original=original_field)
 
-    def _parse_method(self, components: List[str]) -> MatchedMethod:
+    def _parse_method(self, components: list[str]) -> MatchedMethod:
         method_types = components[-1]
         argument_type, return_type = method_types[1:].split(")")
 
@@ -94,8 +94,8 @@ class EnigmaParser(Parser):
         original_method = Method(name=components[-2], argument_types="", return_type="")
         return MatchedMethod(new=new_method, original=original_method)
 
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
-        result: Dict[str, MatchedClass] = {}
+    def parse(self, raw_input: str) -> dict[str, MatchedClass]:
+        result: dict[str, MatchedClass] = {}
         matched_class: Optional[MatchedClass] = None
         current_class = ""
         for line in raw_input.splitlines():
@@ -128,8 +128,8 @@ class JadxRename(pydantic.BaseModel):
 
 
 class JadxFormatter(Formatter):
-    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
-        renames: List[JadxRename] = []
+    def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
+        renames: list[JadxRename] = []
         for matched_class in matched_classes.values():
             class_node_ref = JadxNodeRef(ref_type="CLASS", decl_class=matched_class.new.to_full_name())
             class_rename = JadxRename(new_name=matched_class.original.to_full_name(), node_ref=class_node_ref)
@@ -171,9 +171,9 @@ class JadxParser(Parser):
 
     def _parse_fields(
         self,
-        result: Dict[str, MatchedClass],
-        jadx_to_sigma_classes: Dict[str, MatchedClass],
-        jadx_to_sigma_field: List[Tuple[str, MatchedField]],
+        result: dict[str, MatchedClass],
+        jadx_to_sigma_classes: dict[str, MatchedClass],
+        jadx_to_sigma_field: list[tuple[str, MatchedField]],
     ) -> None:
         for decl_class, matched_field in jadx_to_sigma_field:
             matched_class = jadx_to_sigma_classes.get(decl_class)
@@ -183,7 +183,7 @@ class JadxParser(Parser):
                 jadx_to_sigma_classes[decl_class] = matched_class
             matched_class.matched_fields.append(matched_field)
 
-    def _parse_field(self, jadx_rename: JadxRename) -> Tuple[str, MatchedField]:
+    def _parse_field(self, jadx_rename: JadxRename) -> tuple[str, MatchedField]:
         assert jadx_rename.node_ref.short_id is not None
         new_field = Field.from_java_representation(jadx_rename.node_ref.short_id)
         original_field = Field(name=jadx_rename.new_name, type="")
@@ -191,9 +191,9 @@ class JadxParser(Parser):
 
     def _parse_methods(
         self,
-        result: Dict[str, MatchedClass],
-        jadx_to_sigma_classes: Dict[str, MatchedClass],
-        jadx_to_sigma_method: List[Tuple[str, MatchedMethod]],
+        result: dict[str, MatchedClass],
+        jadx_to_sigma_classes: dict[str, MatchedClass],
+        jadx_to_sigma_method: list[tuple[str, MatchedMethod]],
     ) -> None:
         for decl_class, matched_method in jadx_to_sigma_method:
             matched_class = jadx_to_sigma_classes.get(decl_class)
@@ -203,19 +203,19 @@ class JadxParser(Parser):
                 jadx_to_sigma_classes[decl_class] = matched_class
             matched_class.matched_methods.append(matched_method)
 
-    def _parse_method(self, jadx_rename: JadxRename) -> Tuple[str, MatchedMethod]:
+    def _parse_method(self, jadx_rename: JadxRename) -> tuple[str, MatchedMethod]:
         assert jadx_rename.node_ref.short_id is not None
         new_method = Method.from_java_representation(jadx_rename.node_ref.short_id)
         original_method = Method(name=jadx_rename.new_name, argument_types="", return_type="")
         return (jadx_rename.node_ref.decl_class, MatchedMethod(new=new_method, original=original_method))
 
-    def parse(self, raw_input: str) -> Dict[str, MatchedClass]:
-        result: Dict[str, MatchedClass] = {}
+    def parse(self, raw_input: str) -> dict[str, MatchedClass]:
+        result: dict[str, MatchedClass] = {}
         raw_jadx_dict = json.loads(raw_input)
-        jadex_renames = pydantic.TypeAdapter(List[JadxRename]).validate_python(raw_jadx_dict["codeData"]["renames"])
-        jadx_to_sigma_classes: Dict[str, MatchedClass] = {}
-        jadx_to_sigma_field: List[Tuple[str, MatchedField]] = []
-        jadx_to_sigma_method: List[Tuple[str, MatchedMethod]] = []
+        jadex_renames = pydantic.TypeAdapter(list[JadxRename]).validate_python(raw_jadx_dict["codeData"]["renames"])
+        jadx_to_sigma_classes: dict[str, MatchedClass] = {}
+        jadx_to_sigma_field: list[tuple[str, MatchedField]] = []
+        jadx_to_sigma_method: list[tuple[str, MatchedMethod]] = []
 
         for rename in jadex_renames:
             if rename.node_ref.ref_type == "CLASS":
@@ -239,7 +239,7 @@ class MappingFormat(str, enum.Enum):
     LEGACY = "legacy"
 
 
-FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
+FORMAT_TO_FORMATTER: dict[MappingFormat, type[Formatter]] = {
     MappingFormat.RAW: RawFormatter,
     MappingFormat.ENIGMA: EnigmaFormatter,
     MappingFormat.JADX: JadxFormatter,
@@ -247,7 +247,7 @@ FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
 }
 
 
-def convert_to_format(matched_classes: Dict[str, MatchedClass], output_format: MappingFormat) -> str:
+def convert_to_format(matched_classes: dict[str, MatchedClass], output_format: MappingFormat) -> str:
     try:
         return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
     except KeyError:
@@ -257,14 +257,14 @@ def convert_to_format(matched_classes: Dict[str, MatchedClass], output_format: M
         ) from None
 
 
-FORMAT_TO_PARSER: Dict[MappingFormat, Type[Parser]] = {
+FORMAT_TO_PARSER: dict[MappingFormat, type[Parser]] = {
     MappingFormat.RAW: RawParser,
     MappingFormat.ENIGMA: EnigmaParser,
     MappingFormat.JADX: JadxParser,
 }
 
 
-def parse_from_format(raw_input: str, input_format: MappingFormat) -> Dict[str, MatchedClass]:
+def parse_from_format(raw_input: str, input_format: MappingFormat) -> dict[str, MatchedClass]:
     try:
         return FORMAT_TO_PARSER[input_format]().parse(raw_input)
     except KeyError:
