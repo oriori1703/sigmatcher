@@ -31,7 +31,7 @@ app = typer.Typer()
 stdout_console = Console(soft_wrap=True)
 stderr_console = Console(soft_wrap=True, stderr=True)
 
-cache_app = typer.Typer(help="Manage Sigmatcher's cache")
+cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
 
 CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
@@ -117,6 +117,9 @@ def convert(
     output_file: Annotated[Optional[Path], typer.Option(help="Path for the output mapping file")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
 ) -> None:
+    """
+    Convert a mapping output from one format to another.
+    """
     if input_file is not None:
         raw_input = input_file.read_text()
     elif isinstance(sys.stdin, io.TextIOBase):
@@ -155,6 +158,9 @@ def analyze(
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
 ) -> None:
+    """
+    Analyze an APK file using the provided signatures.
+    """
     definition_groups: List[Tuple[ClassDefinition, ...]] = []
     for signature_file in signatures:
         with signature_file.open("r") as f:
