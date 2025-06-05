@@ -147,11 +147,39 @@ class JadxParser(Parser):
             matched_fields=[],
         )
 
+    def _parse_fields(
+        self,
+        result: Dict[str, MatchedClass],
+        jadx_to_sigma_classes: Dict[str, MatchedClass],
+        jadx_to_sigma_field: List[Tuple[str, MatchedField]],
+    ) -> None:
+        for decl_class, matched_field in jadx_to_sigma_field:
+            matched_class = jadx_to_sigma_classes.get(decl_class)
+            if matched_class is None:
+                matched_class = self._parse_holder_class(decl_class)
+                result[matched_class.original.name] = matched_class
+                jadx_to_sigma_classes[decl_class] = matched_class
+            matched_class.matched_fields.append(matched_field)
+
     def _parse_field(self, jadx_rename: JadxRename) -> Tuple[str, MatchedField]:
         assert jadx_rename.node_ref.short_id is not None
         new_field = Field.from_java_representation(jadx_rename.node_ref.short_id)
         original_field = Field(name=jadx_rename.new_name, type="")
         return (jadx_rename.node_ref.decl_class, MatchedField(new=new_field, original=original_field))
+
+    def _parse_methods(
+        self,
+        result: Dict[str, MatchedClass],
+        jadx_to_sigma_classes: Dict[str, MatchedClass],
+        jadx_to_sigma_method: List[Tuple[str, MatchedMethod]],
+    ) -> None:
+        for decl_class, matched_method in jadx_to_sigma_method:
+            matched_class = jadx_to_sigma_classes.get(decl_class)
+            if matched_class is None:
+                matched_class = self._parse_holder_class(decl_class)
+                result[matched_class.original.name] = matched_class
+                jadx_to_sigma_classes[decl_class] = matched_class
+            matched_class.matched_methods.append(matched_method)
 
     def _parse_method(self, jadx_rename: JadxRename) -> Tuple[str, MatchedMethod]:
         assert jadx_rename.node_ref.short_id is not None
@@ -177,21 +205,8 @@ class JadxParser(Parser):
             elif rename.node_ref.ref_type == "METHOD":
                 jadx_to_sigma_method.append(self._parse_method(rename))
 
-        for decl_class, matched_field in jadx_to_sigma_field:
-            matched_class = jadx_to_sigma_classes.get(decl_class)
-            if matched_class is None:
-                matched_class = self._parse_holder_class(decl_class)
-                result[matched_class.original.name] = matched_class
-                jadx_to_sigma_classes[decl_class] = matched_class
-            matched_class.matched_fields.append(matched_field)
-
-        for decl_class, matched_method in jadx_to_sigma_method:
-            matched_class = jadx_to_sigma_classes.get(decl_class)
-            if matched_class is None:
-                matched_class = self._parse_holder_class(decl_class)
-                result[matched_class.original.name] = matched_class
-                jadx_to_sigma_classes[decl_class] = matched_class
-            matched_class.matched_methods.append(matched_method)
+        self._parse_fields(result, jadx_to_sigma_classes, jadx_to_sigma_field)
+        self._parse_methods(result, jadx_to_sigma_classes, jadx_to_sigma_method)
         return result
 
 
