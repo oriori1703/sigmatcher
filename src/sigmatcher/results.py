@@ -73,12 +73,24 @@ class Class(pydantic.BaseModel):
     package: str
 
     @classmethod
+    def from_full_name(cls, full_name: str) -> "Class":
+        package, _, name = full_name.rpartition(".")
+        return cls(name=name, package=package)
+
+    def to_full_name(self) -> str:
+        return f"{self.package}.{self.name}"
+
+    @property
+    def full_name(self) -> str:
+        return self.to_full_name()
+
+    @classmethod
     def from_java_representation(cls, java_representation: str) -> "Class":
         package, _, name = java_representation[1:-1].replace("/", ".").rpartition(".")
         return cls(name=name, package=package)
 
     def to_java_representation(self) -> str:
-        return f"L{self.package}.{self.name};".replace(".", "/")
+        return f"L{self.to_full_name()};".replace(".", "/")
 
     @property
     def java(self) -> str:
