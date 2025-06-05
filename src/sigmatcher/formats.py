@@ -115,37 +115,59 @@ class EnigmaParser(Parser):
 
 
 class JadxNodeRef(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, populate_by_name=True)
     ref_type: Literal["CLASS", "FIELD", "METHOD"]
     decl_class: str
     short_id: Optional[str] = None
 
 
 class JadxRename(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, populate_by_name=True)
     new_name: str
     node_ref: JadxNodeRef
 
 
+class JadxFormatter(Formatter):
+    def convert(self, matched_classes: Dict[str, MatchedClass]) -> str:
+        renames: List[JadxRename] = []
+        for matched_class in matched_classes.values():
+            class_node_ref = JadxNodeRef(ref_type="CLASS", decl_class=matched_class.new.to_full_name())
+            class_rename = JadxRename(new_name=matched_class.original.to_full_name(), node_ref=class_node_ref)
+            renames.append(class_rename)
+            for matched_field in matched_class.matched_fields:
+                field_node_ref = JadxNodeRef(
+                    ref_type="FIELD",
+                    decl_class=matched_class.new.to_full_name(),
+                    short_id=matched_field.new.to_java_representation(),
+                )
+                field_rename = JadxRename(new_name=matched_field.original.name, node_ref=field_node_ref)
+                renames.append(field_rename)
+            for method in matched_class.matched_methods:
+                method_node_ref = JadxNodeRef(
+                    ref_type="METHOD",
+                    decl_class=matched_class.new.to_full_name(),
+                    short_id=method.new.to_java_representation(),
+                )
+                method_rename = JadxRename(new_name=method.original.name, node_ref=method_node_ref)
+                renames.append(method_rename)
+        return json.dumps(
+            {"codeData": {"renames": [rename.model_dump(mode="json", exclude_unset=True) for rename in renames]}},
+            indent=4,
+        )
+
+
 class JadxParser(Parser):
     def _parse_class(self, jadx_rename: JadxRename) -> MatchedClass:
-        new_package, _, new_name = jadx_rename.node_ref.decl_class.rpartition(".")
-        orignal_package, _, original_name = jadx_rename.new_name.rpartition(".")
         return MatchedClass(
-            new=Class(name=new_name, package=new_package),
-            original=Class(name=original_name, package=orignal_package),
+            new=Class.from_full_name(jadx_rename.node_ref.decl_class),
+            original=Class.from_full_name(jadx_rename.new_name),
             matched_methods=[],
             matched_fields=[],
         )
 
     def _parse_holder_class(self, decl_class: str) -> MatchedClass:
-        package, _, name = decl_class.rpartition(".")
-        return MatchedClass(
-            new=Class(name=name, package=package),
-            original=Class(name=name, package=package),
-            matched_methods=[],
-            matched_fields=[],
-        )
+        clazz = Class.from_full_name(decl_class)
+        return MatchedClass(new=clazz, original=clazz, matched_methods=[], matched_fields=[])
 
     def _parse_fields(
         self,
@@ -220,6 +242,7 @@ class MappingFormat(str, enum.Enum):
 FORMAT_TO_FORMATTER: Dict[MappingFormat, Type[Formatter]] = {
     MappingFormat.RAW: RawFormatter,
     MappingFormat.ENIGMA: EnigmaFormatter,
+    MappingFormat.JADX: JadxFormatter,
     MappingFormat.LEGACY: LegacyFormatter,
 }
 
