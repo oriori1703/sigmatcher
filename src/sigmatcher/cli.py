@@ -5,12 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-if sys.version_info < (3, 9):
-    from typing_extensions import Annotated
-else:
-    from typing import Annotated
+from typing import Annotated, Optional
 
 import platformdirs
 import pydantic
@@ -141,7 +136,7 @@ def analyze(
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
     signatures: Annotated[
-        List[Path],
+        list[Path],
         typer.Option(
             help="Path to a signature file. If multiple files are given, they are merged together",
             exists=True,
@@ -161,7 +156,7 @@ def analyze(
     """
     Analyze an APK file using the provided signatures.
     """
-    definition_groups: List[Tuple[ClassDefinition, ...]] = []
+    definition_groups: list[tuple[ClassDefinition, ...]] = []
     for signature_file in signatures:
         with signature_file.open("r") as f:
             raw_yaml = yaml.safe_load(f)
@@ -181,8 +176,8 @@ def analyze(
     assert isinstance(apk_version, str)
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    successful_results: Dict[str, MatchedClass] = {}
-    unsuccessful_results: Dict[str, Exception] = {}
+    successful_results: dict[str, MatchedClass] = {}
+    unsuccessful_results: dict[str, Exception] = {}
     for analyzer_name, result in results.items():
         if isinstance(result, Exception):
             unsuccessful_results[analyzer_name] = result

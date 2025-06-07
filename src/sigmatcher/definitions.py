@@ -2,14 +2,10 @@ import fnmatch
 import re
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import ClassVar, Dict, Iterable, List, Optional, Sequence, Set, Tuple, TypeVar, Union
-
-if sys.version_info < (3, 9):
-    from typing_extensions import Annotated
-else:
-    from typing import Annotated
+from typing import Annotated, ClassVar, Optional, TypeVar, Union
 
 if sys.version_info < (3, 10):
     from typing_extensions import Literal, TypeAlias
@@ -39,7 +35,7 @@ class InvalidMacroModifierError(Exception):
         super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
-def is_in_version_range(app_version: Optional[str], version_range: Union[str, List[str], None]) -> bool:
+def is_in_version_range(app_version: Optional[str], version_range: Union[str, list[str], None]) -> bool:
     if app_version is None or version_range is None:
         return True
     ranges = version_range if isinstance(version_range, list) else [version_range]
@@ -47,29 +43,29 @@ def is_in_version_range(app_version: Optional[str], version_range: Union[str, Li
 
 
 class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
-    version_range: Union[str, List[str], None] = None
+    version_range: Union[str, list[str], None] = None
     """The version range in which the signature is valid."""
     count: int = 1
     """The number of times the signature should match in order to be considered a match."""
 
     @abstractmethod
-    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> list[Path]:
         raise NotImplementedError()
 
     @abstractmethod
-    def check_strings(self, strings: Iterable[str]) -> List[str]:
+    def check_strings(self, strings: Iterable[str]) -> list[str]:
         raise NotImplementedError()
 
     @abstractmethod
-    def capture(self, value: str) -> Set[str]:
+    def capture(self, value: str) -> set[str]:
         raise NotImplementedError()
 
     @abstractmethod
-    def get_dependencies(self) -> List[str]:
+    def get_dependencies(self) -> list[str]:
         raise NotImplementedError()
 
     def resolve_macro(
-        self, results: Dict[str, Union[Result, Exception]], result_identifier: str, result_modifier: str
+        self, results: dict[str, Union[Result, Exception]], result_identifier: str, result_modifier: str
     ) -> str:
         result = results[result_identifier]
         assert not isinstance(result, Exception)
@@ -83,7 +79,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         return resolved_macro
 
     @abstractmethod
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
         raise NotImplementedError()
 
     def is_in_version_range(self, app_version: Optional[str]) -> bool:
@@ -111,15 +107,15 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
-    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> list[Path]:
         return [
             path.resolve()
             for path, match_count in rip_regex(self.signature, search_pathes).items()
             if self.count in (match_count, 0)
         ]
 
-    def check_strings(self, strings: Iterable[str]) -> List[str]:
-        results: List[str] = []
+    def check_strings(self, strings: Iterable[str]) -> list[str]:
+        results: list[str] = []
         for string in strings:
             match_count = len(self.signature.findall(string))
             if match_count == 0:
@@ -128,7 +124,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
                 results.append(string)
         return results
 
-    def capture(self, value: str) -> Set[str]:
+    def capture(self, value: str) -> set[str]:
         match = self.signature.search(value)
         if match is None:
             return set()
@@ -139,14 +135,14 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
         return set(match.groups())
 
-    def get_dependencies(self) -> List[str]:
+    def get_dependencies(self) -> list[str]:
         return [macro.rpartition(".")[0] for macro in self._get_raw_macros]
 
     @cached_property
-    def _get_raw_macros(self) -> Set[str]:
+    def _get_raw_macros(self) -> set[str]:
         return set(self.MACRO_REGEX.findall(self.signature.pattern))
 
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
         if not self._get_raw_macros:
             return self
 
@@ -182,19 +178,19 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     type: Literal["treesitter"] = "treesitter"
     """The type of the signature."""
 
-    def check_files(self, search_pathes: Iterable[Path]) -> List[Path]:
+    def check_files(self, search_pathes: Iterable[Path]) -> list[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def check_strings(self, strings: Iterable[str]) -> List[str]:
+    def check_strings(self, strings: Iterable[str]) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def capture(self, value: str) -> Set[str]:
+    def capture(self, value: str) -> set[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def get_dependencies(self) -> List[str]:
+    def get_dependencies(self) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def resolve_macros(self, results: Dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 
@@ -206,18 +202,18 @@ Signature: TypeAlias = Annotated[
 class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
     name: str
     """The name of the definition, i.e. the class, method, field, or export name."""
-    signatures: Tuple[Signature, ...]
+    signatures: tuple[Signature, ...]
     """A list of signatures that define the definition."""
-    version_range: Union[str, List[str], None] = None
+    version_range: Union[str, list[str], None] = None
     """The version range in which the definition is valid."""
 
-    def get_signatures_for_version(self, app_version: Optional[str]) -> Tuple[Signature, ...]:
+    def get_signatures_for_version(self, app_version: Optional[str]) -> tuple[Signature, ...]:
         if app_version is None:
             return self.signatures
         return tuple(signature for signature in self.signatures if signature.is_in_version_range(app_version))
 
-    def get_dependencies(self, app_version: Optional[str]) -> Set[str]:
-        dependencies: Set[str] = set()
+    def get_dependencies(self, app_version: Optional[str]) -> set[str]:
+        dependencies: set[str] = set()
         for signature in self.get_signatures_for_version(app_version):
             dependencies.update(signature.get_dependencies())
         return dependencies
@@ -241,15 +237,15 @@ class MethodDefinition(Definition, frozen=True):
 class ClassDefinition(Definition, frozen=True):
     package: Optional[str] = None
     """The package of the class."""
-    fields: Tuple[FieldDefinition, ...] = ()
+    fields: tuple[FieldDefinition, ...] = ()
     """A list of field definitions."""
-    methods: Tuple[MethodDefinition, ...] = ()
+    methods: tuple[MethodDefinition, ...] = ()
     """A list of method definitions."""
-    exports: Tuple[ExportDefinition, ...] = ()
+    exports: tuple[ExportDefinition, ...] = ()
     """A list of export definitions."""
 
 
-DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(List[ClassDefinition])
+DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[ClassDefinition])
 
 
 TDefinition = TypeVar("TDefinition", bound=Definition)
@@ -272,13 +268,13 @@ def merge_definition(def1: TDefinition, def2: TDefinition) -> TDefinition:
     return def1.model_copy(update=fields_to_update)
 
 
-def merge_definitions_groups(definition_groups: Sequence[Sequence[TDefinition]]) -> Tuple[TDefinition, ...]:
+def merge_definitions_groups(definition_groups: Sequence[Sequence[TDefinition]]) -> tuple[TDefinition, ...]:
     """
     Merge multiple definition groups into a single group,
     e.g. merge all the methods and fields of 2 class definitions with the same name.
     When a definition is present in multiple groups, the signatures are taken from the last group.
     """
-    final_definitions: Dict[str, TDefinition] = {}
+    final_definitions: dict[str, TDefinition] = {}
     for definition_group in definition_groups:
         for definition in definition_group:
             if definition.name in final_definitions:
