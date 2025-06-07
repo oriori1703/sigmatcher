@@ -2,7 +2,7 @@ import enum
 import json
 from abc import ABC, abstractmethod
 from io import StringIO
-from typing import Literal, Optional
+from typing import Literal
 
 import pydantic
 import pydantic.alias_generators
@@ -96,7 +96,7 @@ class EnigmaParser(Parser):
 
     def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         result: dict[str, MatchedClass] = {}
-        matched_class: Optional[MatchedClass] = None
+        matched_class: MatchedClass | None = None
         current_class = ""
         for line in raw_input.splitlines():
             components = line.split()
@@ -118,7 +118,7 @@ class JadxNodeRef(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, populate_by_name=True)
     ref_type: Literal["CLASS", "FIELD", "METHOD"]
     decl_class: str
-    short_id: Optional[str] = None
+    short_id: str | None = None
 
 
 class JadxRename(pydantic.BaseModel):

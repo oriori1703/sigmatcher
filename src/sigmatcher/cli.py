@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import platformdirs
 import pydantic
@@ -59,8 +59,7 @@ def version_callback(value: bool) -> None:
 @app.callback()
 def callback(
     _version: Annotated[
-        Optional[bool],
-        typer.Option("--version", help="Show the version and exit.", callback=version_callback),
+        bool | None, typer.Option("--version", help="Show the version and exit.", callback=version_callback)
     ] = None,
 ) -> None:
     pass
@@ -69,8 +68,7 @@ def callback(
 @app.command()
 def schema(
     output: Annotated[
-        Optional[Path],
-        typer.Option(help="Output path for the json schema. If none is given print to stdout"),
+        Path | None, typer.Option(help="Output path for the json schema. If none is given print to stdout")
     ] = None,
 ) -> None:
     """
@@ -103,13 +101,12 @@ def apktool_callback(value: str) -> str:
 @app.command()
 def convert(
     input_file: Annotated[
-        Optional[Path],
-        typer.Option(help="Path for the input mapping output", exists=True, file_okay=True, dir_okay=False),
+        Path | None, typer.Option(help="Path for the input mapping output", exists=True, file_okay=True, dir_okay=False)
     ] = None,
     input_format: Annotated[
         MappingFormat, typer.Option(help="The mapping format of the input file")
     ] = MappingFormat.ENIGMA,
-    output_file: Annotated[Optional[Path], typer.Option(help="Path for the output mapping file")] = None,
+    output_file: Annotated[Path | None, typer.Option(help="Path for the output mapping file")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
 ) -> None:
     """
@@ -144,10 +141,7 @@ def analyze(
             dir_okay=False,
         ),
     ],
-    output_file: Annotated[
-        Optional[Path],
-        typer.Option(help="Output path for the final mapping output"),
-    ] = None,
+    output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)

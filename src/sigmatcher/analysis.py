@@ -1,9 +1,9 @@
 import dataclasses
 import graphlib
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Callable, Optional, TypeVar, Union
+from typing import TypeVar
 
 from sigmatcher.definitions import (
     ClassDefinition,
@@ -66,13 +66,13 @@ def filter_signature_matches(
 @dataclasses.dataclass(frozen=True)
 class Analyzer(ABC):
     definition: Definition
-    app_version: Optional[str]
+    app_version: str | None
 
     @abstractmethod
-    def analyze(self, results: dict[str, Union[Result, Exception]]) -> Result:
+    def analyze(self, results: dict[str, Result | Exception]) -> Result:
         pass
 
-    def check_match_count(self, matches: Optional[set[SignatureMatch]]) -> None:
+    def check_match_count(self, matches: set[SignatureMatch] | None) -> None:
         if matches is None or len(matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(matches) > 1:
@@ -81,7 +81,7 @@ class Analyzer(ABC):
     def get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)
 
-    def check_dependencies(self, results: dict[str, Union[Result, Exception]]) -> None:
+    def check_dependencies(self, results: dict[str, Result | Exception]) -> None:
         failed_dependencies: list[str] = []
         for dependency_name in self.get_dependencies():
             child_result = results[dependency_name]
@@ -109,7 +109,7 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
     search_root: Path
 
-    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedClass:
+    def analyze(self, results: dict[str, Result | Exception]) -> MatchedClass:
         signatures = list(self.get_signatures_for_version())
         if len(signatures) == 0:
             raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
@@ -151,7 +151,7 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedField:
+    def analyze(self, results: dict[str, Result | Exception]) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -189,7 +189,7 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedMethod:
+    def analyze(self, results: dict[str, Result | Exception]) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -233,7 +233,7 @@ class ExportAnalyzer(Analyzer):
     definition: ExportDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Union[Result, Exception]]) -> MatchedExport:
+    def analyze(self, results: dict[str, Result | Exception]) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -263,7 +263,7 @@ class ExportAnalyzer(Analyzer):
 
 
 def create_analyzers(
-    definitions: Sequence[ClassDefinition], search_root: Path, app_version: Optional[str]
+    definitions: Sequence[ClassDefinition], search_root: Path, app_version: str | None
 ) -> dict[str, Analyzer]:
     canonical_search_root = search_root.resolve()
     name_to_analyzer: dict[str, Analyzer] = {}
@@ -296,15 +296,15 @@ def create_analyzers(
 
 
 def analyze(
-    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: Optional[str]
-) -> dict[str, Union[Result, Exception]]:
+    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str | None
+) -> dict[str, Result | Exception]:
     name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         sorter.add(analyzer.name, *analyzer.get_dependencies())
 
-    results: dict[str, Union[Result, Exception]] = {}
+    results: dict[str, Result | Exception] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
