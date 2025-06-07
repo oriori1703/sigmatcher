@@ -115,14 +115,14 @@ class EnigmaParser(Parser):
 
 
 class JadxNodeRef(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, populate_by_name=True)
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True)
     ref_type: Literal["CLASS", "FIELD", "METHOD"]
     decl_class: str
     short_id: str | None = None
 
 
 class JadxRename(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, populate_by_name=True)
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True)
     new_name: str
     node_ref: JadxNodeRef
 

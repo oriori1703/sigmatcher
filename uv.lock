@@ -361,7 +361,7 @@ dev = [
 requires-dist = [
     { name = "packaging", specifier = ">=24.1,<26" },
     { name = "platformdirs", specifier = ">=4.2.2,<5" },
-    { name = "pydantic", specifier = ">=2.8.2,<3" },
+    { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "pyyaml", specifier = ">=6.0.1,<7" },
     { name = "sigmatcher", extras = ["typing"], marker = "extra == 'all'" },
     { name = "typer", specifier = ">=0.12.3" },
