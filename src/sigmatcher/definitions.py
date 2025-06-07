@@ -5,12 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, ClassVar, Optional, TypeVar, Union
-
-if sys.version_info < (3, 10):
-    from typing_extensions import Literal, TypeAlias
-else:
-    from typing import Literal, TypeAlias
+from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self
@@ -35,7 +30,7 @@ class InvalidMacroModifierError(Exception):
         super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
-def is_in_version_range(app_version: Optional[str], version_range: Union[str, list[str], None]) -> bool:
+def is_in_version_range(app_version: str | None, version_range: str | list[str] | None) -> bool:
     if app_version is None or version_range is None:
         return True
     ranges = version_range if isinstance(version_range, list) else [version_range]
@@ -43,7 +38,7 @@ def is_in_version_range(app_version: Optional[str], version_range: Union[str, li
 
 
 class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
-    version_range: Union[str, list[str], None] = None
+    version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
     count: int = 1
     """The number of times the signature should match in order to be considered a match."""
@@ -65,7 +60,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         raise NotImplementedError()
 
     def resolve_macro(
-        self, results: dict[str, Union[Result, Exception]], result_identifier: str, result_modifier: str
+        self, results: dict[str, Result | Exception], result_identifier: str, result_modifier: str
     ) -> str:
         result = results[result_identifier]
         assert not isinstance(result, Exception)
@@ -79,10 +74,10 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         return resolved_macro
 
     @abstractmethod
-    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
         raise NotImplementedError()
 
-    def is_in_version_range(self, app_version: Optional[str]) -> bool:
+    def is_in_version_range(self, app_version: str | None) -> bool:
         return is_in_version_range(app_version, self.version_range)
 
 
@@ -142,7 +137,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def _get_raw_macros(self) -> set[str]:
         return set(self.MACRO_REGEX.findall(self.signature.pattern))
 
-    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
         if not self._get_raw_macros:
             return self
 
@@ -190,12 +185,12 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def get_dependencies(self) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def resolve_macros(self, results: dict[str, Union[Result, Exception]]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 
 Signature: TypeAlias = Annotated[
-    Union[RegexSignature, GlobSignature, TreeSitterSignature], pydantic.Field(discriminator="type")
+    RegexSignature | GlobSignature | TreeSitterSignature, pydantic.Field(discriminator="type")
 ]
 
 
@@ -204,21 +199,21 @@ class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True)
     """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: tuple[Signature, ...]
     """A list of signatures that define the definition."""
-    version_range: Union[str, list[str], None] = None
+    version_range: str | list[str] | None = None
     """The version range in which the definition is valid."""
 
-    def get_signatures_for_version(self, app_version: Optional[str]) -> tuple[Signature, ...]:
+    def get_signatures_for_version(self, app_version: str | None) -> tuple[Signature, ...]:
         if app_version is None:
             return self.signatures
         return tuple(signature for signature in self.signatures if signature.is_in_version_range(app_version))
 
-    def get_dependencies(self, app_version: Optional[str]) -> set[str]:
+    def get_dependencies(self, app_version: str | None) -> set[str]:
         dependencies: set[str] = set()
         for signature in self.get_signatures_for_version(app_version):
             dependencies.update(signature.get_dependencies())
         return dependencies
 
-    def is_in_version_range(self, app_version: Optional[str]) -> bool:
+    def is_in_version_range(self, app_version: str | None) -> bool:
         return is_in_version_range(app_version, self.version_range)
 
 
@@ -235,7 +230,7 @@ class MethodDefinition(Definition, frozen=True):
 
 
 class ClassDefinition(Definition, frozen=True):
-    package: Optional[str] = None
+    package: str | None = None
     """The package of the class."""
     fields: tuple[FieldDefinition, ...] = ()
     """A list of field definitions."""
