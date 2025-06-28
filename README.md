@@ -43,7 +43,7 @@ To get started with sigmatcher, follow these steps:
    Use the sigmatcher analyze command, specifying the path to the APK and the signature file(s):
 
    ```shell
-   sigmatcher analyze --apk path/to/your/app.apk --signatures path/to/your/signature_file.yaml
+   sigmatcher analyze path/to/your/app.apk --signatures path/to/your/signature_file.yaml
    ```
 
    This command will decode the APK, apply the signatures, and output the analysis results, highlighting matched
