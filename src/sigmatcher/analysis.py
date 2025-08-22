@@ -4,16 +4,22 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
 from functools import cache
 from pathlib import Path
-from typing import TypeVar
 
 from sigmatcher.definitions import (
     ClassDefinition,
     Definition,
     ExportDefinition,
     FieldDefinition,
-    InvalidMacroModifierError,
     MethodDefinition,
     Signature,
+    SignatureMatch,
+)
+from sigmatcher.exceptions import (
+    DependencyMatchError,
+    NoMatchesError,
+    NoSignaturesError,
+    SigmatcherError,
+    TooManyMatchesError,
 )
 from sigmatcher.results import (
     Class,
@@ -25,25 +31,6 @@ from sigmatcher.results import (
     Method,
     Result,
 )
-
-
-class MatchError(Exception):
-    pass
-
-
-class NoMatchesError(MatchError):
-    pass
-
-
-class TooManyMatchesError(MatchError):
-    pass
-
-
-class DependencyMatchError(MatchError):
-    pass
-
-
-SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 
 def filter_signature_matches(
@@ -75,19 +62,19 @@ class Analyzer(ABC):
     app_version: str | None
 
     @abstractmethod
-    def analyze(self, results: dict[str, Result | Exception]) -> Result:
+    def analyze(self, results: dict[str, Result | SigmatcherError]) -> Result:
         pass
 
     def check_match_count(self, matches: set[SignatureMatch] | None) -> None:
         if matches is None or len(matches) == 0:
             raise NoMatchesError(f"Found no match for {self.name}!")
         if len(matches) > 1:
-            raise TooManyMatchesError(f"Found too many matches for {self.name}: {matches}")
+            raise TooManyMatchesError(self.name, matches)
 
     def get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)
 
-    def check_dependencies(self, results: dict[str, Result | Exception]) -> None:
+    def check_dependencies(self, results: dict[str, Result | SigmatcherError]) -> None:
         failed_dependencies: list[str] = []
         for dependency_name in self.get_dependencies():
             child_result = results[dependency_name]
@@ -95,9 +82,7 @@ class Analyzer(ABC):
                 failed_dependencies.append(dependency_name)
 
         if failed_dependencies:
-            raise DependencyMatchError(
-                f"Skipped {self.name} because of the following dependencies failed: {failed_dependencies}"
-            )
+            raise DependencyMatchError(self.name, failed_dependencies)
 
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
@@ -115,10 +100,10 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
     search_root: Path
 
-    def analyze(self, results: dict[str, Result | Exception]) -> MatchedClass:
+    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
         signatures = list(self.get_signatures_for_version())
         if len(signatures) == 0:
-            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+            raise NoSignaturesError(self.name)
 
         # Make sure the first signature is a whitelist signature in order to improve performance
         whitelist_signature_index = 0
@@ -158,7 +143,7 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Result | Exception]) -> MatchedField:
+    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -166,7 +151,7 @@ class FieldAnalyzer(Analyzer):
         raw_class = parent_class_result.smali_file.read_text()
         signatures = self.get_signatures_for_version()
         if len(signatures) == 0:
-            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise NoMatchesError(
                 f"Found {len(signatures)} signatures for {self.name}. Field definitions should only have one."
@@ -196,7 +181,7 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Result | Exception]) -> MatchedMethod:
+    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -206,7 +191,7 @@ class MethodAnalyzer(Analyzer):
 
         signatures = self.get_signatures_for_version()
         if len(signatures) == 0:
-            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+            raise NoSignaturesError(self.name)
 
         def check_signature_callback(signature: Signature, matches: set[str]) -> list[str]:
             return signature.resolve_macros(results).check_strings(matches)
@@ -240,7 +225,7 @@ class ExportAnalyzer(Analyzer):
     definition: ExportDefinition
     parent: ClassAnalyzer
 
-    def analyze(self, results: dict[str, Result | Exception]) -> MatchedExport:
+    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
@@ -249,7 +234,7 @@ class ExportAnalyzer(Analyzer):
         signatures = self.get_signatures_for_version()
         signature = signatures[0].resolve_macros(results)
         if len(signatures) == 0:
-            raise NoMatchesError(f"Found no signatures for {self.name}! Make sure your version ranges are correct.")
+            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise NoMatchesError(
                 f"Found {len(signatures)} signatures for {self.name}. Export definitions should only have one."
@@ -304,19 +289,19 @@ def create_analyzers(
 
 def analyze(
     definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str | None
-) -> dict[str, Result | Exception]:
+) -> dict[str, Result | SigmatcherError]:
     name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         sorter.add(analyzer.name, *analyzer.get_dependencies())
 
-    results: dict[str, Result | Exception] = {}
+    results: dict[str, Result | SigmatcherError] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
             analyzer.check_dependencies(results)
             results[analyzer_name] = analyzer.analyze(results)
-        except (MatchError, InvalidMacroModifierError) as e:
+        except SigmatcherError as e:
             results[analyzer_name] = e
     return results

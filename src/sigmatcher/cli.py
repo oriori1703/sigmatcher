@@ -14,10 +14,12 @@ import pydantic_core
 import typer
 import yaml
 from rich.console import Console
+from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
+from sigmatcher.exceptions import DependencyMatchError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass
 
@@ -178,9 +180,15 @@ def analyze(
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
     successful_results: dict[str, MatchedClass] = {}
-    unsuccessful_results: dict[str, Exception] = {}
+    unsuccessful_results: dict[str, SigmatcherError] = {}
+    dependent_errors: dict[str, list[tuple[str, SigmatcherError]]] = {}
+
     for analyzer_name, result in results.items():
-        if isinstance(result, Exception):
+        if isinstance(result, DependencyMatchError):
+            for dependecy in result.missing_dependencies:
+                dependent_errors.setdefault(dependecy, []).append((analyzer_name, result))
+
+        elif isinstance(result, Exception):
             unsuccessful_results[analyzer_name] = result
         elif isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
@@ -191,8 +199,16 @@ def analyze(
     else:
         output_file.write_text(mapping_output)
 
+    def redner_error(analyzer_name: str, result: SigmatcherError, tree: Tree) -> None:
+        branch = tree.add(f"[red]{analyzer_name}[/red] - [yellow]{result.short_message()}[/yellow]")
+        for dependent_ananlyzer_name, dependent_result in dependent_errors.get(analyzer_name, []):
+            redner_error(dependent_ananlyzer_name, dependent_result, branch)
+
+    tree = Tree("Errors:")
     for analyzer_name, result in unsuccessful_results.items():
-        stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+        redner_error(analyzer_name, result, tree)
+
+    stderr_console.print(tree)
 
 
 def main() -> None:
