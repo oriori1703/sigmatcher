@@ -19,6 +19,7 @@ from sigmatcher.exceptions import (
     NoSignaturesError,
     SigmatcherError,
     TooManyMatchesError,
+    TooManySignaturesError,
 )
 from sigmatcher.results import (
     Class,
@@ -61,7 +62,7 @@ class Analyzer(ABC):
 
     def check_match_count(self, matches: set[SignatureMatch] | None) -> None:
         if matches is None or len(matches) == 0:
-            raise NoMatchesError(f"Found no match for {self.name}!")
+            raise NoMatchesError(self.name)
         if len(matches) > 1:
             raise TooManyMatchesError(self.name, matches)
 
@@ -147,9 +148,7 @@ class FieldAnalyzer(Analyzer):
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
-            raise NoMatchesError(
-                f"Found {len(signatures)} signatures for {self.name}. Field definitions should only have one."
-            )
+            raise TooManySignaturesError(self.name, signatures)
         signature = signatures[0].resolve_macros(results)
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
@@ -230,9 +229,7 @@ class ExportAnalyzer(Analyzer):
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
-            raise NoMatchesError(
-                f"Found {len(signatures)} signatures for {self.name}. Export definitions should only have one."
-            )
+            raise TooManySignaturesError(self.name, signatures)
 
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)

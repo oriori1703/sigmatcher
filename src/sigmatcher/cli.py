@@ -21,7 +21,7 @@ from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.exceptions import DependencyMatchError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
-from sigmatcher.results import MatchedClass
+from sigmatcher.results import MatchedClass, Result
 
 app = typer.Typer()
 
@@ -129,8 +129,86 @@ def convert(
         output_file.write_text(mapping_output)
 
 
+def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
+    definition_groups: list[tuple[ClassDefinition, ...]] = []
+    for signature_file in signatures:
+        with signature_file.open("r") as f:
+            raw_yaml = yaml.safe_load(f)
+        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+        definition_groups.append(tuple(definitions))
+    return merge_definitions_groups(definition_groups)
+
+
+def _unpack_apk(apktool: str, apk: Path) -> Path:
+    apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
+    unpacked_path = CACHE_DIR_PATH / apk_hash
+    if not unpacked_path.exists():
+        subprocess.run(
+            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
+            check=True,
+        )
+        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
+    return unpacked_path
+
+
+def _get_apk_version(unpacked_path: Path) -> str | None:
+    apktool_yaml_file = unpacked_path / "apktool.yml"
+    with apktool_yaml_file.open() as f:
+        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+    assert isinstance(apk_version, str) or apk_version is None
+    return apk_version
+
+
+def _output_successful_results(
+    results: dict[str, MatchedClass], output_file: Path | None, output_format: MappingFormat
+) -> None:
+    mapping_output = convert_to_format(results, output_format)
+    if output_file is None:
+        stdout_console.print(mapping_output)
+    else:
+        output_file.write_text(mapping_output)
+
+
+def _output_failed_results(
+    failed_results: dict[str, SigmatcherError], dependent_errors: dict[str, list[SigmatcherError]]
+) -> None:
+    def redner_error(error: SigmatcherError, tree: Tree) -> None:
+        branch = tree.add(f"[red]{error.analyzer_name}[/red] - [yellow]{error.short_message()}[/yellow]")
+        for dependent_error in dependent_errors.get(error.analyzer_name, []):
+            redner_error(dependent_error, branch)
+
+    tree = Tree("Errors:")
+    for result in failed_results.values():
+        redner_error(result, tree)
+
+    stderr_console.print(tree)
+
+
+def _output_results(
+    results: dict[str, Result | SigmatcherError],
+    output_file: Path | None,
+    output_format: MappingFormat,
+    output_flat_errors: bool,
+) -> None:
+    successful_results: dict[str, MatchedClass] = {}
+    failed_results: dict[str, SigmatcherError] = {}
+    dependent_errors: dict[str, list[SigmatcherError]] = {}
+
+    for analyzer_name, result in results.items():
+        if isinstance(result, DependencyMatchError) and not output_flat_errors:
+            for dependecy in result.missing_dependencies:
+                dependent_errors.setdefault(dependecy, []).append(result)
+        elif isinstance(result, Exception):
+            failed_results[analyzer_name] = result
+        elif isinstance(result, MatchedClass):
+            successful_results[analyzer_name] = result
+
+    _output_successful_results(successful_results, output_file, output_format)
+    _output_failed_results(failed_results, dependent_errors)
+
+
 @app.command()
-def analyze(
+def analyze(  # noqa: PLR0913
     apk: Annotated[
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
@@ -145,6 +223,7 @@ def analyze(
     ],
     output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
+    flat_errors: Annotated[bool, typer.Option(help="Whether to flatten dependency errors")] = False,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
@@ -152,61 +231,16 @@ def analyze(
     """
     Analyze an APK file using the provided signatures.
     """
-    definition_groups: list[tuple[ClassDefinition, ...]] = []
-    for signature_file in signatures:
-        with signature_file.open("r") as f:
-            raw_yaml = yaml.safe_load(f)
-        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
-        definition_groups.append(tuple(definitions))
-    merged_definitions = merge_definitions_groups(definition_groups)
+    merged_definitions = _read_definitions(signatures)
+    unpacked_path = _unpack_apk(apktool, apk)
 
-    apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
-    unpacked_path = CACHE_DIR_PATH / apk_hash
-    if not unpacked_path.exists():
-        subprocess.run(
-            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
-            check=True,
-        )
-        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-
-    apktool_yaml_file = unpacked_path / "apktool.yml"
-    with apktool_yaml_file.open() as f:
-        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
-    if not isinstance(apk_version, str):
+    apk_version = _get_apk_version(unpacked_path)
+    if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    successful_results: dict[str, MatchedClass] = {}
-    unsuccessful_results: dict[str, SigmatcherError] = {}
-    dependent_errors: dict[str, list[tuple[str, SigmatcherError]]] = {}
-
-    for analyzer_name, result in results.items():
-        if isinstance(result, DependencyMatchError):
-            for dependecy in result.missing_dependencies:
-                dependent_errors.setdefault(dependecy, []).append((analyzer_name, result))
-
-        elif isinstance(result, Exception):
-            unsuccessful_results[analyzer_name] = result
-        elif isinstance(result, MatchedClass):
-            successful_results[analyzer_name] = result
-
-    mapping_output = convert_to_format(successful_results, output_format)
-    if output_file is None:
-        stdout_console.print(mapping_output)
-    else:
-        output_file.write_text(mapping_output)
-
-    def redner_error(analyzer_name: str, result: SigmatcherError, tree: Tree) -> None:
-        branch = tree.add(f"[red]{analyzer_name}[/red] - [yellow]{result.short_message()}[/yellow]")
-        for dependent_ananlyzer_name, dependent_result in dependent_errors.get(analyzer_name, []):
-            redner_error(dependent_ananlyzer_name, dependent_result, branch)
-
-    tree = Tree("Errors:")
-    for analyzer_name, result in unsuccessful_results.items():
-        redner_error(analyzer_name, result, tree)
-
-    stderr_console.print(tree)
+    _output_results(results, output_file, output_format, flat_errors)
 
 
 def main() -> None:

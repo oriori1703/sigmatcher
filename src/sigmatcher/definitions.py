@@ -7,18 +7,17 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
 
+import pydantic
+from packaging.specifiers import SpecifierSet
+
 from sigmatcher.exceptions import InvalidMacroModifierError, SigmatcherError
+from sigmatcher.grep import rip_regex
+from sigmatcher.results import Result
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self
 else:
     from typing import Self
-
-import pydantic
-from packaging.specifiers import SpecifierSet
-
-from sigmatcher.grep import rip_regex
-from sigmatcher.results import Result
 
 
 def is_in_version_range(app_version: str | None, version_range: str | list[str] | None) -> bool:
@@ -28,13 +27,11 @@ def is_in_version_range(app_version: str | None, version_range: str | list[str] 
     return any(SpecifierSet(spec).contains(app_version) for spec in ranges)
 
 
-class BaseSignature(ABC, pydantic.BaseModel):
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
     count: int = 1
     """The number of times the signature should match in order to be considered a match."""
-
-    model_config = pydantic.ConfigDict(frozen=True, use_attribute_docstrings=True, extra="forbid")
 
     @abstractmethod
     def check_files(self, search_pathes: Iterable[Path]) -> list[Path]:
@@ -74,7 +71,7 @@ class BaseSignature(ABC, pydantic.BaseModel):
         return is_in_version_range(app_version, self.version_range)
 
 
-class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class BaseRegexSignature(BaseSignature, frozen=True):
     signature: "re.Pattern[str]" = pydantic.Field(
         json_schema_extra={"x-intellij-language-injection": {"language": "RegExp"}}
     )
@@ -160,7 +157,7 @@ class GlobSignature(BaseRegexSignature, frozen=True):
         return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
-class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class TreeSitterSignature(BaseSignature, frozen=True):
     signature: str
     """A TreeSitter s-query used to check the signature."""
     type: Literal["treesitter"] = "treesitter"
@@ -189,7 +186,7 @@ Signature: TypeAlias = Annotated[
 SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 
-class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
+class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     name: str
     """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: tuple[Signature, ...]
