@@ -87,10 +87,10 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     )
     """
     A regular expression used to check the signature.
-    
+
     When used for capturing strings, if there is more than one match,
     a named group called `match` should be used to specify what should be captured.
-    
+
     Can include macros in the form of `${<result>.<property>}`.
     Results are actually objects from `sigmatcher.results` package.
     i.e. `Class`, `Field`, `Method`, `Export` objects.
@@ -273,6 +273,7 @@ def merge_definitions_groups(definition_groups: Sequence[Sequence[TDefinition]])
     for definition_group in definition_groups:
         for definition in definition_group:
             if definition.name in final_definitions:
-                definition = merge_definition(final_definitions[definition.name], definition)
-            final_definitions[definition.name] = definition
+                final_definitions[definition.name] = merge_definition(final_definitions[definition.name], definition)
+            else:
+                final_definitions[definition.name] = definition
     return tuple(final_definitions.values())

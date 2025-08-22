@@ -23,7 +23,7 @@ def rip_regex(pattern: str | re.Pattern[str], search_paths: Iterable[Path]) -> d
         pattern,
         *str_search_paths,
     ]
-    process = subprocess.run(args, stdout=subprocess.PIPE, text=True)
+    process = subprocess.run(args, stdout=subprocess.PIPE, text=True, check=False)
 
     if bool(process.returncode):
         return {}

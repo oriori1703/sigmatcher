@@ -124,7 +124,8 @@ class ClassAnalyzer(Analyzer):
 
         def check_signature_callback(signature: Signature, matches: set[Path]) -> list[Path]:
             # Limit the search avoid too many arguments to ripgrep
-            if len(matches) < 100:
+            match_limit = 100
+            if len(matches) < match_limit:
                 search_paths = matches
             else:
                 search_paths = {self.search_root}
