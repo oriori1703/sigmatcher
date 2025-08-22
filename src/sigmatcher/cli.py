@@ -170,7 +170,9 @@ def analyze(
     apktool_yaml_file = unpacked_path / "apktool.yml"
     with apktool_yaml_file.open() as f:
         apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
-    assert isinstance(apk_version, str)
+    if not isinstance(apk_version, str):
+        stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
+        apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
     successful_results: dict[str, MatchedClass] = {}
