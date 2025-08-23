@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 if TYPE_CHECKING:
-    from sigmatcher.definitions import Signature
+    from sigmatcher.definitions import MacroStatement, Signature
 
 SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
@@ -95,10 +95,10 @@ class InvalidMacroModifierError(SigmatcherError):
     Exception raised when an invalid macro modifier is encountered.
     """
 
-    def __init__(self, modifier: str, class_name: str, *args: object) -> None:
-        self.modifier = modifier
-        self.class_name = class_name
-        super().__init__("TODO")  # TODO: replace with real analyzer name, after refactor
+    def __init__(self, analyzer_name: str, macro: "MacroStatement", result_class_name: str, *args: object) -> None:
+        self.macro = macro
+        self.result_class_name = result_class_name
+        super().__init__(analyzer_name, macro, result_class_name, *args)
 
     def debug_message(self) -> str:
         return f"Macro Subject: {self.macro.subject}\nMacro Modifier: {self.macro.modifier}\nSubject Class: {self.result_class_name}"
