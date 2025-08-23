@@ -10,12 +10,14 @@ from sigmatcher.definitions import (
     Definition,
     ExportDefinition,
     FieldDefinition,
+    MacroStatement,
     MethodDefinition,
     Signature,
     SignatureMatch,
 )
 from sigmatcher.exceptions import (
     DependencyMatchError,
+    InvalidMacroModifierError,
     NoMatchesError,
     NoSignaturesError,
     SigmatcherError,
@@ -85,6 +87,31 @@ class Analyzer(ABC):
         if failed_dependencies:
             raise DependencyMatchError(self.name, failed_dependencies)
 
+    def resolve_macro(self, results: dict[str, Result | SigmatcherError], macro_statement: MacroStatement) -> str:
+        result = results[macro_statement.subject]
+        assert not isinstance(result, Exception)
+
+        try:
+            resolved_macro = getattr(result.new, macro_statement.modifier)
+        except AttributeError:
+            raise InvalidMacroModifierError(
+                self.name, macro_statement.modifier, result.new.__class__.__name__
+            ) from None
+
+        assert isinstance(resolved_macro, str)
+        return resolved_macro
+
+    def get_resolved_signatures(self, results: dict[str, Result | SigmatcherError]) -> tuple[Signature, ...]:
+        resolved_signatures: list[Signature] = []
+        for signature in self.get_signatures_for_version():
+            resolved_signature = signature
+            for macro_statement in signature.get_macro_definitions():
+                resolved_macro = self.resolve_macro(results, macro_statement)
+                resolved_signature = signature.resolve_macro(macro_statement, resolved_macro)
+            resolved_signatures.append(resolved_signature)
+
+        return tuple(resolved_signatures)
+
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
 
@@ -102,7 +129,7 @@ class ClassAnalyzer(Analyzer):
     search_root: Path
 
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
-        signatures = list(self.get_signatures_for_version())
+        signatures = list(self.get_resolved_signatures(results))
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
 
@@ -122,7 +149,7 @@ class ClassAnalyzer(Analyzer):
             else:
                 search_paths = {self.search_root}
 
-            return signature.resolve_macros(results).check_files(search_paths)
+            return signature.check_files(search_paths)
 
         initial_matches = get_smali_files(self.search_root)
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
@@ -149,13 +176,14 @@ class FieldAnalyzer(Analyzer):
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
 
-        raw_class = parent_class_result.smali_file.read_text()
-        signatures = self.get_signatures_for_version()
+        signatures = self.get_resolved_signatures(results)
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
-        signature = signatures[0].resolve_macros(results)
+        signature = signatures[0]
+
+        raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         raw_field_name = next(iter(captured_names))
@@ -188,12 +216,12 @@ class MethodAnalyzer(Analyzer):
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = {".method" + method for method in raw_methods}
 
-        signatures = self.get_signatures_for_version()
+        signatures = self.get_resolved_signatures(results)
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
 
         def check_signature_callback(signature: Signature, matches: set[str]) -> list[str]:
-            return signature.resolve_macros(results).check_strings(matches)
+            return signature.check_strings(matches)
 
         method_matches = filter_signature_matches(signatures, methods, check_signature_callback)
 
@@ -229,14 +257,14 @@ class ExportAnalyzer(Analyzer):
         assert isinstance(parent_class_result, MatchedClass)
         assert isinstance(parent_class_result.smali_file, Path)
 
-        raw_class = parent_class_result.smali_file.read_text()
-        signatures = self.get_signatures_for_version()
-        signature = signatures[0].resolve_macros(results)
+        signatures = self.get_resolved_signatures(results)
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
+        signature = signatures[0]
 
+        raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
         self.check_match_count(captured_names)
         export_value = next(iter(captured_names))

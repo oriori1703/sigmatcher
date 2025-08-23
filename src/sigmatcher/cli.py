@@ -237,15 +237,6 @@ def analyze(  # noqa: PLR0913
     merged_definitions = _read_definitions(signatures)
     unpacked_path = _unpack_apk(apktool, apk)
 
-    apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
-    unpacked_path = CACHE_DIR_PATH / apk_hash
-    if not unpacked_path.exists():
-        subprocess.run(
-            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
-            check=True,
-        )
-        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-
     apk_version = _get_apk_version(unpacked_path)
     if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")

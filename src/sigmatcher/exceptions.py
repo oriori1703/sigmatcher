@@ -87,10 +87,10 @@ class InvalidMacroModifierError(SigmatcherError):
     Exception raised when an invalid macro modifier is encountered.
     """
 
-    def __init__(self, modifier: str, class_name: str, *args: object) -> None:
+    def __init__(self, analyzer_name: str, modifier: str, class_name: str, *args: object) -> None:
         self.modifier = modifier
         self.class_name = class_name
-        super().__init__("TODO")  # TODO: replace with real analyzer name, after refactor
+        super().__init__(analyzer_name, modifier, class_name, *args)
 
     def long_message(self) -> str:
         return f"Invalid macro modifier: '{self.modifier}' for class '{self.class_name}'"
