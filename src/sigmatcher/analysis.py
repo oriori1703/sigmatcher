@@ -62,11 +62,13 @@ class Analyzer(ABC):
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> Result:
         pass
 
-    def check_match_count(self, matches: set[SignatureMatch] | None) -> None:
+    def check_match_count(
+        self, matches: set[SignatureMatch] | None, signatures: tuple[Signature, ...] | None = None
+    ) -> None:
         if matches is None or len(matches) == 0:
-            raise NoMatchesError(self.name)
+            raise NoMatchesError(self.name, signatures)
         if len(matches) > 1:
-            raise TooManyMatchesError(self.name, matches)
+            raise TooManyMatchesError(self.name, matches, signatures)
 
     def get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)
@@ -88,9 +90,7 @@ class Analyzer(ABC):
         try:
             resolved_macro = getattr(result.new, macro_statement.modifier)
         except AttributeError:
-            raise InvalidMacroModifierError(
-                self.name, macro_statement.modifier, result.new.__class__.__name__
-            ) from None
+            raise InvalidMacroModifierError(self.name, macro_statement, result.new.__class__.__name__) from None
 
         assert isinstance(resolved_macro, str)
         return resolved_macro
@@ -148,7 +148,7 @@ class ClassAnalyzer(Analyzer):
         initial_matches = set(self.search_root.rglob("*.smali"))
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
 
-        self.check_match_count(class_matches)
+        self.check_match_count(class_matches, tuple(signatures))
         match = next(iter(class_matches))
         with match.open() as f:
             class_definition_line = f.readline().rstrip("\n")
@@ -179,7 +179,7 @@ class FieldAnalyzer(Analyzer):
 
         raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
-        self.check_match_count(captured_names)
+        self.check_match_count(captured_names, signatures)
         raw_field_name = next(iter(captured_names))
 
         new_field = Field.from_java_representation(raw_field_name)
@@ -219,7 +219,7 @@ class MethodAnalyzer(Analyzer):
 
         method_matches = filter_signature_matches(signatures, methods, check_signature_callback)
 
-        self.check_match_count(method_matches)
+        self.check_match_count(method_matches, signatures)
         match = next(iter(method_matches))
         method_definition_line, _, _ = match.partition("\n")
         _, _, raw_method_name = method_definition_line.rpartition(" ")
@@ -260,7 +260,7 @@ class ExportAnalyzer(Analyzer):
 
         raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
-        self.check_match_count(captured_names)
+        self.check_match_count(captured_names, signatures)
         export_value = next(iter(captured_names))
 
         return MatchedExport.from_value(export_value)
