@@ -13,7 +13,8 @@ import pydantic.json_schema
 import pydantic_core
 import typer
 import yaml
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
+from rich.padding import Padding
 from rich.tree import Tree
 
 import sigmatcher.analysis
@@ -172,17 +173,36 @@ def _output_successful_results(
         output_file.write_text(mapping_output)
 
 
+def _redner_error(error: SigmatcherError, debug: bool) -> RenderableType:
+    error_message = f"[red]{error.analyzer_name}[/red] - {error.short_message()}"
+    if debug and (debug_message := error.debug_message()):
+        formated_debug_message = Padding(f"[yellow]{debug_message}[/yellow]", (0, 4))
+        return Group(error_message, "[yellow]Debug Info:[/yellow]", formated_debug_message)
+
+    return Group(error_message)
+
+
 def _output_failed_results(
-    failed_results: dict[str, SigmatcherError], dependent_errors: dict[str, list[SigmatcherError]]
+    failed_results: dict[str, SigmatcherError],
+    output_flat_errors: bool,
+    debug: bool,
 ) -> None:
-    def redner_error(error: SigmatcherError, tree: Tree) -> None:
-        branch = tree.add(f"[red]{error.analyzer_name}[/red] - [yellow]{error.short_message()}[/yellow]")
+    dependent_errors: dict[str, list[SigmatcherError]] = {}
+    if not output_flat_errors:
+        for result in failed_results.values():
+            if isinstance(result, DependencyMatchError):
+                for dependecy in result.missing_dependencies:
+                    dependent_errors.setdefault(dependecy, []).append(result)
+
+    def create_error_tree(error: SigmatcherError, tree: Tree) -> None:
+        error_message = _redner_error(error, debug)
+        branch = tree.add(error_message)
         for dependent_error in dependent_errors.get(error.analyzer_name, []):
-            redner_error(dependent_error, branch)
+            create_error_tree(dependent_error, branch)
 
     tree = Tree("Errors:")
     for result in failed_results.values():
-        redner_error(result, tree)
+        create_error_tree(result, tree)
 
     stderr_console.print(tree)
 
@@ -192,22 +212,19 @@ def _output_results(
     output_file: Path | None,
     output_format: MappingFormat,
     output_flat_errors: bool,
+    debug: bool,
 ) -> None:
     successful_results: dict[str, MatchedClass] = {}
     failed_results: dict[str, SigmatcherError] = {}
-    dependent_errors: dict[str, list[SigmatcherError]] = {}
 
     for analyzer_name, result in results.items():
-        if isinstance(result, DependencyMatchError) and not output_flat_errors:
-            for dependecy in result.missing_dependencies:
-                dependent_errors.setdefault(dependecy, []).append(result)
-        elif isinstance(result, Exception):
+        if isinstance(result, Exception):
             failed_results[analyzer_name] = result
         elif isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result
 
     _output_successful_results(successful_results, output_file, output_format)
-    _output_failed_results(failed_results, dependent_errors)
+    _output_failed_results(failed_results, output_flat_errors, debug)
 
 
 @app.command()
@@ -227,6 +244,9 @@ def analyze(  # noqa: PLR0913
     output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
     flat_errors: Annotated[bool, typer.Option(help="Whether to flatten dependency errors")] = False,
+    debug: Annotated[
+        bool, typer.Option(help="Provide more verbose error messages to help you debug match failures")
+    ] = False,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
@@ -243,7 +263,7 @@ def analyze(  # noqa: PLR0913
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    _output_results(results, output_file, output_format, flat_errors)
+    _output_results(results, output_file, output_format, flat_errors, debug)
 
 
 def main() -> None:
