@@ -1,10 +1,8 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from sigmatcher.definitions import MacroStatement
-
 if TYPE_CHECKING:
-    from sigmatcher.definitions import Signature
+    from sigmatcher.definitions import MacroStatement, Signature
 
 SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
