@@ -182,7 +182,7 @@ def _output_successful_results(
         output_file.write_text(mapping_output)
 
 
-def _redner_error(error: SigmatcherError, debug: bool) -> RenderableType:
+def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
     error_message = f"[red]{error.analyzer_name}[/red] - {error.short_message()}"
     if debug and (debug_message := error.debug_message()):
         formated_debug_message = Padding(f"[yellow]{debug_message}[/yellow]", (0, 4))
@@ -204,7 +204,7 @@ def _output_failed_results(
                     dependent_errors.setdefault(dependecy, []).append(result)
 
     def create_error_tree(error: SigmatcherError, tree: Tree) -> None:
-        error_message = _redner_error(error, debug)
+        error_message = _render_error(error, debug)
         branch = tree.add(error_message)
         for dependent_error in dependent_errors.get(error.analyzer_name, []):
             create_error_tree(dependent_error, branch)
