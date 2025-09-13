@@ -145,7 +145,16 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
     unpacked_path = CACHE_DIR_PATH / apk_hash
     if not unpacked_path.exists():
         subprocess.run(
-            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
+            [
+                apktool,
+                "decode",
+                apk,
+                "--only-manifest",
+                "--no-assets",
+                "-f",
+                "--output",
+                unpacked_path.with_suffix(".tmp"),
+            ],
             check=True,
         )
         shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
