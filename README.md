@@ -27,7 +27,7 @@ Before installing `sigmatcher`, ensure you have the following prerequisites inst
 - `ripgrep`: A command-line search tool that recursively searches your current directory for a regex pattern.
   Install `ripgrep` by following the instructions on its [GitHub page](https://github.com/BurntSushi/ripgrep).
 - `apktool`: A tool for reverse engineering and disassembling Android apk files.
-  Install `apktool` by following the instructions on its [official website](https://ibotpeaches.github.io/Apktool/install/).
+  Install `apktool` by following the instructions on its [official website](https://ibotpeaches.github.io/Apktool/install/). Version 2.12.0 or later required.
 
 ```console
 git clone https://github.com/oriori1703/sigmatcher.git
