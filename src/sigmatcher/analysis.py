@@ -107,7 +107,7 @@ class Analyzer(ABC):
             resolved_signature = signature
             for macro_statement in signature.get_macro_definitions():
                 resolved_macro = self.resolve_macro(results, macro_statement)
-                resolved_signature = signature.resolve_macro(macro_statement, resolved_macro)
+                resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
             resolved_signatures.append(resolved_signature)
 
         return tuple(resolved_signatures)
