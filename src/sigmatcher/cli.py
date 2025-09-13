@@ -196,6 +196,9 @@ def _output_failed_results(
     output_flat_errors: bool,
     debug: bool,
 ) -> None:
+    if not failed_results:
+        return
+
     dependent_errors: dict[str, list[SigmatcherError]] = {}
     if not output_flat_errors:
         for result in failed_results.values():
