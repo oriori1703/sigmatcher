@@ -191,20 +191,18 @@ def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
     return Group(error_message)
 
 
-def _output_failed_results(
-    failed_results: dict[str, SigmatcherError],
-    output_flat_errors: bool,
-    debug: bool,
-) -> None:
-    if not failed_results:
-        return
+def _output_failed_results_flat(failed_results: dict[str, SigmatcherError], debug: bool) -> None:
+    stderr_console.print("Errors:")
+    for result in failed_results.values():
+        stderr_console.print(_render_error(result, debug))
 
+
+def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debug: bool) -> None:
     dependent_errors: dict[str, list[SigmatcherError]] = {}
-    if not output_flat_errors:
-        for result in failed_results.values():
-            if isinstance(result, DependencyMatchError):
-                for dependecy in result.missing_dependencies:
-                    dependent_errors.setdefault(dependecy, []).append(result)
+    for result in failed_results.values():
+        if isinstance(result, DependencyMatchError):
+            for dependecy in result.missing_dependencies:
+                dependent_errors.setdefault(dependecy, []).append(result)
 
     def create_error_tree(error: SigmatcherError, tree: Tree) -> None:
         error_message = _render_error(error, debug)
@@ -236,7 +234,12 @@ def _output_results(
             successful_results[analyzer_name] = result
 
     _output_successful_results(successful_results, output_file, output_format)
-    _output_failed_results(failed_results, output_flat_errors, debug)
+    if not failed_results:
+        return
+    if output_flat_errors:
+        _output_failed_results_flat(failed_results, debug)
+    else:
+        _output_failed_results_tree(failed_results, debug)
 
 
 @app.command()
