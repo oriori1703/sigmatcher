@@ -70,9 +70,6 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
         matches_message = "\n ".join(str(match) for match in self.matches)
         return f"{super().debug_message()}\n- Matches:\n {matches_message}"
 
-    def log_message(self) -> str:
-        return f"Found too many matches for {self.analyzer_name}: {self.matches}"
-
     def short_message(self) -> str:
         return "Found too many matches"
 
@@ -80,10 +77,17 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
 class DependencyMatchError(SigmatcherError):
     def __init__(self, analyzer_name: str, missing_dependencies: list[str], *args: object) -> None:
         self.missing_dependencies = missing_dependencies
+        self.should_show_debug = True
         super().__init__(analyzer_name, missing_dependencies, *args)
 
     def short_message(self) -> str:
         return "Skipped because of failed dependencies"
+
+    def debug_message(self) -> str:
+        if not self.should_show_debug:
+            return ""
+        dependencies_message = "\n ".join(self.missing_dependencies)
+        return f"- Dependecies: \n{dependencies_message}"
 
 
 class InvalidMacroModifierError(SigmatcherError):

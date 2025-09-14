@@ -202,6 +202,7 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
     top_level_errors: list[SigmatcherError] = []
     for result in failed_results.values():
         if isinstance(result, DependencyMatchError):
+            result.should_show_debug = False
             for dependecy in result.missing_dependencies:
                 dependent_errors.setdefault(dependecy, []).append(result)
         else:
