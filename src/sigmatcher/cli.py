@@ -196,10 +196,13 @@ def _output_failed_results_flat(failed_results: dict[str, SigmatcherError], debu
 
 def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debug: bool) -> None:
     dependent_errors: dict[str, list[SigmatcherError]] = {}
+    top_level_errors: list[SigmatcherError] = []
     for result in failed_results.values():
         if isinstance(result, DependencyMatchError):
             for dependecy in result.missing_dependencies:
                 dependent_errors.setdefault(dependecy, []).append(result)
+        else:
+            top_level_errors.append(result)
 
     def create_error_tree(error: SigmatcherError, tree: Tree) -> None:
         error_message = _render_error(error, debug)
@@ -208,7 +211,7 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
             create_error_tree(dependent_error, branch)
 
     tree = Tree("Errors:")
-    for result in failed_results.values():
+    for result in top_level_errors:
         create_error_tree(result, tree)
 
     stderr_console.print(tree)
