@@ -108,6 +108,7 @@ class Analyzer(ABC):
 class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
     search_root: Path
+    smali_listing_cache: set[Path]
 
     def analyze(self, results: dict[str, Result | Exception]) -> MatchedClass:
         signatures = list(self.get_signatures_for_version())
@@ -132,7 +133,9 @@ class ClassAnalyzer(Analyzer):
 
             return signature.resolve_macros(results).check_files(search_paths)
 
-        initial_matches = set(self.search_root.rglob("*.smali"))
+        if not self.smali_listing_cache:
+            self.smali_listing_cache.update(self.search_root.rglob("*.smali"))
+        initial_matches = self.smali_listing_cache.copy()
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
 
         self.check_match_count(class_matches)
@@ -268,11 +271,12 @@ def create_analyzers(
 ) -> dict[str, Analyzer]:
     canonical_search_root = search_root.resolve()
     name_to_analyzer: dict[str, Analyzer] = {}
+    smali_listing_cache: set[Path] = set()
     for class_definition in definitions:
         if not class_definition.is_in_version_range(app_version):
             continue
 
-        class_analyzer = ClassAnalyzer(class_definition, app_version, canonical_search_root)
+        class_analyzer = ClassAnalyzer(class_definition, app_version, canonical_search_root, smali_listing_cache)
         name_to_analyzer[class_definition.name] = class_analyzer
 
         for method_definition in class_definition.methods:
