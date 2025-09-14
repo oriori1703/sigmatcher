@@ -2,6 +2,7 @@ import dataclasses
 import graphlib
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
+from functools import cache
 from pathlib import Path
 from typing import TypeVar
 
@@ -47,10 +48,10 @@ SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 def filter_signature_matches(
     signatures: Iterable[Signature],
-    initial_matches: set[SignatureMatch],
+    initial_matches: Iterable[SignatureMatch],
     check_signature_callback: Callable[[Signature, set[SignatureMatch]], list[SignatureMatch]],
 ) -> set[SignatureMatch]:
-    all_matches: set[SignatureMatch] = initial_matches
+    all_matches: set[SignatureMatch] = set(initial_matches)
     for signature in signatures:
         signature_match = check_signature_callback(signature, all_matches)
         if signature.count == 0:
@@ -61,6 +62,11 @@ def filter_signature_matches(
                 break
 
     return all_matches
+
+
+@cache
+def get_smali_files(search_root: Path) -> frozenset[Path]:
+    return frozenset(search_root.rglob("*.smali"))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -132,7 +138,7 @@ class ClassAnalyzer(Analyzer):
 
             return signature.resolve_macros(results).check_files(search_paths)
 
-        initial_matches = set(self.search_root.rglob("*.smali"))
+        initial_matches = get_smali_files(self.search_root)
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
 
         self.check_match_count(class_matches)
