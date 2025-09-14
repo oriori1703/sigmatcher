@@ -221,7 +221,7 @@ def _output_results(
     results: dict[str, Result | SigmatcherError],
     output_file: Path | None,
     output_format: MappingFormat,
-    output_flat_errors: bool,
+    output_errors_as_tree: bool,
     debug: bool,
 ) -> None:
     successful_results: dict[str, MatchedClass] = {}
@@ -236,10 +236,10 @@ def _output_results(
     _output_successful_results(successful_results, output_file, output_format)
     if not failed_results:
         return
-    if output_flat_errors:
-        _output_failed_results_flat(failed_results, debug)
-    else:
+    if output_errors_as_tree:
         _output_failed_results_tree(failed_results, debug)
+    else:
+        _output_failed_results_flat(failed_results, debug)
 
 
 @app.command()
@@ -258,7 +258,7 @@ def analyze(  # noqa: PLR0913
     ],
     output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
-    flat_errors: Annotated[bool, typer.Option(help="Whether to flatten dependency errors")] = False,
+    tree_errors: Annotated[bool, typer.Option(help="Show dependency errors as a tree")] = False,
     debug: Annotated[
         bool, typer.Option(help="Provide more verbose error messages to help you debug match failures")
     ] = False,
@@ -278,7 +278,7 @@ def analyze(  # noqa: PLR0913
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    _output_results(results, output_file, output_format, flat_errors, debug)
+    _output_results(results, output_file, output_format, tree_errors, debug)
 
 
 def main() -> None:
