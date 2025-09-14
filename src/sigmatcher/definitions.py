@@ -3,31 +3,19 @@ import re
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
-from functools import cached_property
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
-
-if sys.version_info < (3, 11):
-    from typing_extensions import Self
-else:
-    from typing import Self
 
 import pydantic
 from packaging.specifiers import SpecifierSet
 
 from sigmatcher.grep import rip_regex
-from sigmatcher.results import Result
 
-
-class InvalidMacroModifierError(Exception):
-    """
-    Exception raised when an invalid macro modifier is encountered.
-    """
-
-    def __init__(self, modifier: str, class_name: str) -> None:
-        self.modifier = modifier
-        self.class_name = class_name
-        super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
+if sys.version_info < (3, 11):
+    from typing_extensions import Self
+else:
+    from typing import Self
 
 
 def is_in_version_range(app_version: str | None, version_range: str | list[str] | None) -> bool:
@@ -37,7 +25,13 @@ def is_in_version_range(app_version: str | None, version_range: str | list[str] 
     return any(SpecifierSet(spec).contains(app_version) for spec in ranges)
 
 
-class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
+@dataclass(frozen=True)
+class MacroStatement:
+    subject: str
+    modifier: str
+
+
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
     count: int = 1
@@ -59,29 +53,19 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
     def get_dependencies(self) -> list[str]:
         raise NotImplementedError()
 
-    def resolve_macro(
-        self, results: dict[str, Result | Exception], result_identifier: str, result_modifier: str
-    ) -> str:
-        result = results[result_identifier]
-        assert not isinstance(result, Exception)
-
-        try:
-            resolved_macro = getattr(result.new, result_modifier)
-        except AttributeError:
-            raise InvalidMacroModifierError(result_modifier, result.new.__class__.__name__) from None
-
-        assert isinstance(resolved_macro, str)
-        return resolved_macro
+    @abstractmethod
+    def get_macro_definitions(self) -> set[MacroStatement]:
+        raise NotImplementedError()
 
     @abstractmethod
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
+    def resolve_macro(self, macro_statement: MacroStatement, resolved_macro: str) -> Self:
         raise NotImplementedError()
 
     def is_in_version_range(self, app_version: str | None) -> bool:
         return is_in_version_range(app_version, self.version_range)
 
 
-class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class BaseRegexSignature(BaseSignature, frozen=True):
     signature: "re.Pattern[str]" = pydantic.Field(
         json_schema_extra={"x-intellij-language-injection": {"language": "RegExp"}}
     )
@@ -131,21 +115,20 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         return set(match.groups())
 
     def get_dependencies(self) -> list[str]:
-        return [macro.rpartition(".")[0] for macro in self._get_raw_macros]
+        return [macro.subject for macro in self.get_macro_definitions()]
 
-    @cached_property
-    def _get_raw_macros(self) -> set[str]:
-        return set(self.MACRO_REGEX.findall(self.signature.pattern))
+    def get_macro_definitions(self) -> set[MacroStatement]:
+        macros: set[MacroStatement] = set()
+        for raw_macro in self.MACRO_REGEX.findall(self.signature.pattern):
+            assert isinstance(raw_macro, str)
+            macro_subject, _, macro_modifier = raw_macro.rpartition(".")
+            macros.add(MacroStatement(macro_subject, macro_modifier))
 
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
-        if not self._get_raw_macros:
-            return self
+        return macros
 
-        new_pattern = self.signature.pattern
-        for macro in self._get_raw_macros:
-            result_identifier, _, result_modifier = macro.rpartition(".")
-            resolved_macro = self.resolve_macro(results, result_identifier, result_modifier)
-            new_pattern = new_pattern.replace(f"${{{macro}}}", re.escape(resolved_macro))
+    def resolve_macro(self, macro_statement: MacroStatement, resolved_macro: str) -> Self:
+        macro_string = f"{macro_statement.subject}.{macro_statement.modifier}"
+        new_pattern = self.signature.pattern.replace(f"${{{macro_string}}}", re.escape(resolved_macro))
 
         return self.model_copy(update={"signature": re.compile(new_pattern)})
 
@@ -167,7 +150,7 @@ class GlobSignature(BaseRegexSignature, frozen=True):
         return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
-class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class TreeSitterSignature(BaseSignature, frozen=True):
     signature: str
     """A TreeSitter s-query used to check the signature."""
     type: Literal["treesitter"] = "treesitter"
@@ -185,7 +168,10 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     def get_dependencies(self) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
+    def get_macro_definitions(self) -> set[MacroStatement]:
+        raise NotImplementedError("TreeSitter signatures are not supported yet.")
+
+    def resolve_macro(self, macro_statement: MacroStatement, resolved_macro: str) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 
@@ -193,8 +179,10 @@ Signature: TypeAlias = Annotated[
     RegexSignature | GlobSignature | TreeSitterSignature, pydantic.Field(discriminator="type")
 ]
 
+SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
-class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
+
+class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     name: str
     """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: tuple[Signature, ...]
