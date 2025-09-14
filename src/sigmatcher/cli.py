@@ -170,6 +170,8 @@ def analyze(
     apktool_yaml_file = unpacked_path / "apktool.yml"
     with apktool_yaml_file.open() as f:
         apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+    if isinstance(apk_version, float | int):
+        apk_version = str(apk_version)
     if not isinstance(apk_version, str):
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
