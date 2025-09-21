@@ -53,12 +53,24 @@ def info(
 
 
 @cache_app.command()
-def clean() -> None:
+def clean(
+    apk: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Optionally, a path to a specific APK file to clean the cache for. If omitted, cleans everything.",
+            dir_okay=False,
+            exists=True,
+        ),
+    ] = None,
+) -> None:
     """
     Clean the cache directory.
     """
-    for path in CACHE_DIR_PATH.iterdir():
-        shutil.rmtree(path)
+    if apk is not None:
+        shutil.rmtree(get_cache_directory(apk))
+    else:
+        for path in CACHE_DIR_PATH.iterdir():
+            shutil.rmtree(path)
     stdout_console.print("[green]Successfully cleaned the cache directory.[/green]")
 
 
