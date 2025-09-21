@@ -13,6 +13,7 @@ import pydantic.json_schema
 import pydantic_core
 import typer
 import yaml
+from packaging import version
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
 from rich.tree import Tree
@@ -140,16 +141,25 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
     return merge_definitions_groups(definition_groups)
 
 
+def _get_apktool_version(apktool: str) -> str:
+    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True)
+    return proc.stdout.decode()
+
+
 def _unpack_apk(apktool: str, apk: Path) -> Path:
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = CACHE_DIR_PATH / apk_hash
-    if not unpacked_path.exists():
+    if unpacked_path.exists():
+        if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
+            only_manifest_flag = "--only-manifest"
+        else:
+            only_manifest_flag = "--force-manifest"
         subprocess.run(
             [
                 apktool,
                 "decode",
                 apk,
-                "--only-manifest",
+                only_manifest_flag,
                 "--no-assets",
                 "-f",
                 "--output",
