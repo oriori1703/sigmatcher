@@ -93,9 +93,10 @@ def schema(
 
 
 def apktool_callback(value: str) -> str:
-    if shutil.which(value) is None:
+    resolved_path = shutil.which(value)
+    if resolved_path is None:
         raise typer.BadParameter("Cannot find the apktool executable")
-    return value
+    return resolved_path
 
 
 @app.command()
