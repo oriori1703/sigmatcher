@@ -33,21 +33,50 @@ CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure
 
 
 @cache_app.command()
-def info() -> None:
+def info(
+    apk: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Optionally, a path to an APK file. If omitted, prints info about the global cache.",
+            dir_okay=False,
+            exists=True,
+        ),
+    ] = None,
+) -> None:
     """
     Get the path to Sigmatcher's cache directory.
     """
-    print(str(CACHE_DIR_PATH))
+    if apk is None:
+        print(str(CACHE_DIR_PATH))
+    else:
+        print(get_cache_directory(apk))
 
 
 @cache_app.command()
-def clean() -> None:
+def clean(
+    apk: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Optionally, a path to a specific APK file to clean the cache for. If omitted, cleans everything.",
+            dir_okay=False,
+            exists=True,
+        ),
+    ] = None,
+) -> None:
     """
     Clean the cache directory.
     """
-    for path in CACHE_DIR_PATH.iterdir():
-        shutil.rmtree(path)
+    if apk is not None:
+        shutil.rmtree(get_cache_directory(apk))
+    else:
+        for path in CACHE_DIR_PATH.iterdir():
+            shutil.rmtree(path)
     stdout_console.print("[green]Successfully cleaned the cache directory.[/green]")
+
+
+def get_cache_directory(apk: Path) -> Path:
+    apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
+    return CACHE_DIR_PATH / apk_hash_hex
 
 
 def version_callback(value: bool) -> None:
@@ -158,8 +187,7 @@ def analyze(
         definition_groups.append(tuple(definitions))
     merged_definitions = merge_definitions_groups(definition_groups)
 
-    apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
-    unpacked_path = CACHE_DIR_PATH / apk_hash
+    unpacked_path = get_cache_directory(apk)
     if not unpacked_path.exists():
         subprocess.run(
             [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
