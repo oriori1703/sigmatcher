@@ -118,7 +118,7 @@ Here's a basic example of what a signature file looks like:
   - signature: The pattern to match, depending on the signature type.
       For classes and methods they just need to match anywhere within the class/method. For fields and exports, they
       need to match the full field expression/export string, i.e. using the `match` capture group for regex signatures.
-  - count: The number of times the signature should appear to be considered a match.
+  - count: The number of times the signature should appear to be considered a match. Can be either an integer or a string of the form "min-max". Defaults to 1.
   - version_range: Optional. Specifies the application versions this signature applies to, using version specifiers
       like those used by pip and described in
       [PEP-440](https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers).

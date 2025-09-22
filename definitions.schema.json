@@ -242,10 +242,16 @@
           "title": "Version Range"
         },
         "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": 1,
-          "description": "The number of times the signature should match in order to be considered a match.",
-          "title": "Count",
-          "type": "integer"
+          "description": "The number of times the signature should match in order to be considered a match.\nCan be either an integer or a string of the form \"min-max\"."
         },
         "signature": {
           "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match` should be used to specify what should be captured.\n\nCan include macros in the form of `${<result>.<property>}`.\nResults are actually objects from `sigmatcher.results` package.\ni.e. `Class`, `Field`, `Method`, `Export` objects.\nProperty could be any python property that the objects holds.\n\nFor example a macro could look like `${MyClass.fields.java}`, which would return something like\n`Lf9/s;->a:LX/Y/Z/A02;`",
@@ -352,10 +358,16 @@
           "title": "Version Range"
         },
         "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": 1,
-          "description": "The number of times the signature should match in order to be considered a match.",
-          "title": "Count",
-          "type": "integer"
+          "description": "The number of times the signature should match in order to be considered a match.\nCan be either an integer or a string of the form \"min-max\"."
         },
         "signature": {
           "description": "A regular expression used to check the signature.\n\nWhen used for capturing strings, if there is more than one match,\na named group called `match` should be used to specify what should be captured.\n\nCan include macros in the form of `${<result>.<property>}`.\nResults are actually objects from `sigmatcher.results` package.\ni.e. `Class`, `Field`, `Method`, `Export` objects.\nProperty could be any python property that the objects holds.\n\nFor example a macro could look like `${MyClass.fields.java}`, which would return something like\n`Lf9/s;->a:LX/Y/Z/A02;`",
@@ -402,10 +414,16 @@
           "title": "Version Range"
         },
         "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "default": 1,
-          "description": "The number of times the signature should match in order to be considered a match.",
-          "title": "Count",
-          "type": "integer"
+          "description": "The number of times the signature should match in order to be considered a match.\nCan be either an integer or a string of the form \"min-max\"."
         },
         "signature": {
           "description": "A TreeSitter s-query used to check the signature.",
