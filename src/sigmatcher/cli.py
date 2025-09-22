@@ -149,7 +149,7 @@ def _get_apktool_version(apktool: str) -> str:
 def _unpack_apk(apktool: str, apk: Path) -> Path:
     apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
     unpacked_path = CACHE_DIR_PATH / apk_hash
-    if unpacked_path.exists():
+    if not unpacked_path.exists():
         if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
             only_manifest_flag = "--only-manifest"
         else:
