@@ -148,9 +148,7 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         results: list[str] = []
         for string in strings:
             match_count = len(self.signature.findall(string))
-            if match_count == 0:
-                continue
-            if self.count in (match_count, 0):
+            if match_count in self.count:
                 results.append(string)
         return results
 
