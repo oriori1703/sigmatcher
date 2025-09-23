@@ -15,6 +15,7 @@ import typer
 import yaml
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
+from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
@@ -210,10 +211,41 @@ def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
     return Group(error_message)
 
 
+def _output_failed_results_flat(failed_results: dict[str, SigmatcherError], debug: bool) -> None:
+    stderr_console.print("Errors:")
+    for result in failed_results.values():
+        stderr_console.print(_render_error(result, debug))
+
+
+def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debug: bool) -> None:
+    dependent_errors: dict[str, list[SigmatcherError]] = {}
+    top_level_errors: list[SigmatcherError] = []
+    for result in failed_results.values():
+        if isinstance(result, DependencyMatchError):
+            result.should_show_debug = False
+            for dependecy in result.missing_dependencies:
+                dependent_errors.setdefault(dependecy, []).append(result)
+        else:
+            top_level_errors.append(result)
+
+    def create_error_tree(error: SigmatcherError, tree: Tree) -> None:
+        error_message = _render_error(error, debug)
+        branch = tree.add(error_message)
+        for dependent_error in dependent_errors.get(error.analyzer_name, []):
+            create_error_tree(dependent_error, branch)
+
+    tree = Tree("Errors:")
+    for result in top_level_errors:
+        create_error_tree(result, tree)
+
+    stderr_console.print(tree)
+
+
 def _output_results(
     results: dict[str, Result | SigmatcherError],
     output_file: Path | None,
     output_format: MappingFormat,
+    output_errors_as_tree: bool,
     debug: bool,
 ) -> None:
     successful_results: dict[str, MatchedClass] = {}
@@ -228,9 +260,10 @@ def _output_results(
     _output_successful_results(successful_results, output_file, output_format)
     if not failed_results:
         return
-    stderr_console.print("Errors:")
-    for result in failed_results.values():
-        stderr_console.print(_render_error(result, debug))
+    if output_errors_as_tree:
+        _output_failed_results_tree(failed_results, debug)
+    else:
+        _output_failed_results_flat(failed_results, debug)
 
 
 @app.command()
@@ -249,6 +282,7 @@ def analyze(  # noqa: PLR0913
     ],
     output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
+    tree_errors: Annotated[bool, typer.Option(help="Show dependency errors as a tree")] = False,
     debug: Annotated[
         bool, typer.Option(help="Provide more verbose error messages to help you debug match failures")
     ] = False,
@@ -268,7 +302,7 @@ def analyze(  # noqa: PLR0913
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    _output_results(results, output_file, output_format, debug)
+    _output_results(results, output_file, output_format, tree_errors, debug)
 
 
 def main() -> None:
