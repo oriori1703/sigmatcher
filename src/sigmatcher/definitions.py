@@ -137,12 +137,11 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
         else:
             search_paths_for_rg = search_paths
         file_to_match_count = rip_regex(self.signature, search_paths_for_rg)
-        return [
-            path.resolve()
-            for path in search_paths
-            # rip_regex only includes files with count > 0 in the result.
-            if file_to_match_count.get(path, 0) in self.count
-        ]
+        if self.count.min_count > 0:
+            # Optimization: do not iterate over files with 0 matches
+            return [path.resolve() for path, match_count in file_to_match_count.items() if match_count in self.count]
+        # rip_regex only includes files with count > 0 in the result.
+        return [path.resolve() for path in search_paths if file_to_match_count.get(path, 0) in self.count]
 
     def check_strings(self, strings: Iterable[str]) -> list[str]:
         results: list[str] = []
