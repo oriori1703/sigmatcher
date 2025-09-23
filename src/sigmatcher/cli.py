@@ -26,8 +26,8 @@ from sigmatcher.results import MatchedClass, Result
 
 app = typer.Typer()
 
-stdout_console = Console(soft_wrap=True)
-stderr_console = Console(soft_wrap=True, stderr=True)
+stdout_console = Console()
+stderr_console = Console(stderr=True)
 
 cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
@@ -197,7 +197,7 @@ def _output_successful_results(
 ) -> None:
     mapping_output = convert_to_format(results, output_format)
     if output_file is None:
-        stdout_console.print(mapping_output)
+        stdout_console.print(mapping_output, overflow="ignore", no_wrap=True, crop=False)
     else:
         output_file.write_text(mapping_output)
 
