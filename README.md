@@ -15,6 +15,9 @@ invaluable resource for long-running reverse engineering projects.
 - [Installation](#installation)
 - [Quick Usage](#quick-usage)
 - [Creating Signature Files](#creating-signature-files)
+  - [Signature File JSON Schema](#signature-file-json-schema)
+  - [Structure of a Signature File](#structure-of-a-signature-file)
+  - [Using Macros in Signatures](#using-macros-in-signatures)
 - [License](#license)
 
 ## Installation
@@ -81,6 +84,7 @@ Here's a basic example of what a signature file looks like:
 
 ```yaml
 # $schema: ./definitions.schema.json
+
 - name: "ConnectionManager"
   package: "com.example.package.network"
   signatures:
@@ -125,6 +129,98 @@ Here's a basic example of what a signature file looks like:
       This could also contains a list of specifers, which act like a the logical "or" operator.
 
 Most of those fields are optional, and you can use them as needed.
+
+### Using Macros in Signatures
+
+Macros allow you to reference properties from other matched results within your signatures,
+enabling dynamic and context-aware pattern matching.
+Macros are particularly useful when you need to create signatures that depend on information
+from previously matched classes, methods, fields, or exports.
+
+#### Macro Syntax
+
+Macros use the format `${<result_name>.<property>}`, where:
+
+- `result_name` is the name of another definition in your signature file
+- `property` is a property of the matched result object
+
+#### Available Properties
+
+Depending on the type of result, different properties are available:
+
+**For Classes:**
+
+- `name`: The class name (e.g., "ConnectionManager")
+- `package`: The package name (e.g., "com.example.package.network")
+- `full_name`: The complete class name with package (e.g., "com.example.package.network.ConnectionManager")
+- `java`: The Java representation (e.g., "Lcom/example/package/network/ConnectionManager;")
+- `fields.FieldName`: Access to specific field results (e.g., `fields.socket` returns the matched field object)
+- `methods.MethodName`: Access to specific method results (e.g., `methods.read` returns the matched method object)
+- `exports.ExportName`: Access to specific export results (e.g., `exports.someExport` returns the matched export object)
+
+**For Methods:**
+
+- `name`: The method name (e.g., "read")
+- `argument_types`: The method argument types (e.g., "Ljava/lang/String;")
+- `return_type`: The method return type (e.g., "V")
+- `java`: The complete Java representation (e.g., "read(Ljava/lang/String;)V")
+
+**For Fields:**
+
+- `name`: The field name (e.g., "socket")
+- `type`: The field type (e.g., "Ljava/net/Socket;")
+- `java`: The complete Java representation (e.g., "socket:Ljava/net/Socket;")
+
+**For Exports:**
+
+- `value`: The exported string value
+
+#### Macro Example
+
+Here's an example showing how macros can be used to create interdependent signatures:
+
+```yaml
+# $schema: ./definitions.schema.json
+
+- name: "ConnectionManager"
+package: "com.example.package.network"
+signatures:
+ - signature: 'ConnectionManager/openConnection: could not open connection due to a DNS error'
+   type: regex
+   count: 1
+fields:
+ - name: "socket"
+   signatures:
+     - signature: '^\.field private final (?P<match>.+:Ljava/net/Socket;)'
+       type: regex
+       count: 1
+
+- name: "NetworkHandler"
+package: "com.example.package.network"
+signatures:
+ - signature: 'new-instance v\d+, ${ConnectionManager.java}'
+   type: regex
+   count: 1
+methods:
+ - name: "handleConnection"
+   signatures:
+     - signature: 'iget-object v\d+, v\d+, ${ConnectionManager.fields.socket.java}'
+       type: regex
+       count: 1
+```
+
+In this example:
+
+- The `NetworkHandler` class uses a macro to reference the Java representation of the `ConnectionManager` class
+- The `handleConnection` method uses a macro to reference the socket field from the `ConnectionManager` class
+
+#### Important Notes
+
+- **Definition Order Doesn't Matter**: Sigmatcher automatically sorts the dependency graph, so macros can reference results that are defined later in the YAML file
+- Macros are resolved at analysis time after the dependency graph is sorted
+- If a macro references a result that cannot be matched, the signature will fail to match
+- Use the `java` property when you need the complete Java/Smali representation of a class, method, or field
+- Macros work with both `regex` and `glob` signature types
 
 ## License
 
