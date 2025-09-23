@@ -45,7 +45,7 @@ class CountRange(pydantic.BaseModel):
         return self.min_count <= value <= self.max_count
 
 
-class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
     count: Annotated[CountRange, pydantic.Field(json_schema_extra={"default": 1})] = CountRange(
@@ -108,7 +108,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         return f"{count.min_count}-{count.max_count}"
 
 
-class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class BaseRegexSignature(BaseSignature, frozen=True):
     signature: "re.Pattern[str]" = pydantic.Field(
         json_schema_extra={"x-intellij-language-injection": {"language": "RegExp"}}
     )
@@ -199,7 +199,7 @@ class GlobSignature(BaseRegexSignature, frozen=True):
         return fnmatch.translate(v).replace("\\Z", "$").replace("(?>", "(?:")
 
 
-class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
+class TreeSitterSignature(BaseSignature, frozen=True):
     signature: str
     """A TreeSitter s-query used to check the signature."""
     type: Literal["treesitter"] = "treesitter"
@@ -226,7 +226,7 @@ Signature: TypeAlias = Annotated[
 ]
 
 
-class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
+class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
     name: str
     """The name of the definition, i.e. the class, method, field, or export name."""
     signatures: tuple[Signature, ...]
