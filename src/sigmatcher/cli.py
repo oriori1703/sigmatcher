@@ -19,7 +19,7 @@ import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
-from sigmatcher.results import MatchedClass
+from sigmatcher.results import MatchedClass, Result
 
 app = typer.Typer()
 
@@ -157,6 +157,61 @@ def convert(
         output_file.write_text(mapping_output)
 
 
+def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
+    definition_groups: list[tuple[ClassDefinition, ...]] = []
+    for signature_file in signatures:
+        with signature_file.open("r") as f:
+            raw_yaml = yaml.safe_load(f)
+        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+        definition_groups.append(tuple(definitions))
+    return merge_definitions_groups(definition_groups)
+
+
+def _unpack_apk(apktool: str, apk: Path) -> Path:
+    unpacked_path = get_cache_directory(apk)
+    if not unpacked_path.exists():
+        subprocess.run(
+            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
+            check=True,
+        )
+        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
+    return unpacked_path
+
+
+def _get_apk_version(unpacked_path: Path) -> str | None:
+    apktool_yaml_file = unpacked_path / "apktool.yml"
+    with apktool_yaml_file.open() as f:
+        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+
+    if isinstance(apk_version, float | int):
+        apk_version = str(apk_version)
+    assert isinstance(apk_version, str) or apk_version is None
+    return apk_version
+
+
+def _output_results(
+    results: dict[str, Result | Exception],
+    output_file: Path | None,
+    output_format: MappingFormat,
+) -> None:
+    successful_results: dict[str, MatchedClass] = {}
+    unsuccessful_results: dict[str, Exception] = {}
+    for analyzer_name, result in results.items():
+        if isinstance(result, Exception):
+            unsuccessful_results[analyzer_name] = result
+        elif isinstance(result, MatchedClass):
+            successful_results[analyzer_name] = result
+
+    mapping_output = convert_to_format(successful_results, output_format)
+    if output_file is None:
+        stdout_console.print(mapping_output)
+    else:
+        output_file.write_text(mapping_output)
+
+    for analyzer_name, result in unsuccessful_results.items():
+        stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+
+
 @app.command()
 def analyze(
     apk: Annotated[
@@ -180,48 +235,16 @@ def analyze(
     """
     Analyze an APK file using the provided signatures.
     """
-    definition_groups: list[tuple[ClassDefinition, ...]] = []
-    for signature_file in signatures:
-        with signature_file.open("r") as f:
-            raw_yaml = yaml.safe_load(f)
-        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
-        definition_groups.append(tuple(definitions))
-    merged_definitions = merge_definitions_groups(definition_groups)
+    merged_definitions = _read_definitions(signatures)
+    unpacked_path = _unpack_apk(apktool, apk)
 
-    unpacked_path = get_cache_directory(apk)
-    if not unpacked_path.exists():
-        subprocess.run(
-            [apktool, "decode", apk, "--no-res", "--no-assets", "-f", "--output", unpacked_path.with_suffix(".tmp")],
-            check=True,
-        )
-        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-
-    apktool_yaml_file = unpacked_path / "apktool.yml"
-    with apktool_yaml_file.open() as f:
-        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
-    if isinstance(apk_version, float | int):
-        apk_version = str(apk_version)
-    if not isinstance(apk_version, str):
+    apk_version = _get_apk_version(unpacked_path)
+    if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    successful_results: dict[str, MatchedClass] = {}
-    unsuccessful_results: dict[str, Exception] = {}
-    for analyzer_name, result in results.items():
-        if isinstance(result, Exception):
-            unsuccessful_results[analyzer_name] = result
-        elif isinstance(result, MatchedClass):
-            successful_results[analyzer_name] = result
-
-    mapping_output = convert_to_format(successful_results, output_format)
-    if output_file is None:
-        stdout_console.print(mapping_output)
-    else:
-        output_file.write_text(mapping_output)
-
-    for analyzer_name, result in unsuccessful_results.items():
-        stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+    _output_results(results, output_file, output_format)
 
 
 def main() -> None:
