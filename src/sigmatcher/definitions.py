@@ -37,14 +37,25 @@ def is_in_version_range(app_version: str | None, version_range: str | list[str] 
     return any(SpecifierSet(spec).contains(app_version) for spec in ranges)
 
 
+class CountRange(pydantic.BaseModel):
+    min_count: int
+    max_count: int
+
+    def __contains__(self, value: int) -> bool:
+        return self.min_count <= value <= self.max_count
+
+
 class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True):
     version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
-    count: int = 1
-    """The number of times the signature should match in order to be considered a match."""
+    count: Annotated[CountRange, pydantic.Field(json_schema_extra={"default": 1})] = CountRange(
+        min_count=1, max_count=1
+    )
+    """The number of times the signature should match in order to be considered a match.
+    Can be either an integer or a string of the form "min-max"."""
 
     @abstractmethod
-    def check_files(self, search_paths: Iterable[Path]) -> list[Path]:
+    def check_files(self, search_paths: set[Path], search_root: Path) -> list[Path]:
         raise NotImplementedError()
 
     @abstractmethod
@@ -80,6 +91,22 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
     def is_in_version_range(self, app_version: str | None) -> bool:
         return is_in_version_range(app_version, self.version_range)
 
+    @pydantic.field_validator("count", mode="before", json_schema_input_type=int | str)
+    @classmethod
+    def _parse_count(cls, v: str | int) -> CountRange:
+        if isinstance(v, str):
+            min_count, max_count = map(int, v.split("-"))
+        else:
+            min_count, max_count = v, v
+        return CountRange(min_count=min_count, max_count=max_count)
+
+    @pydantic.field_serializer("count", mode="plain")
+    @staticmethod
+    def _serialize_count(count: CountRange) -> int | str:
+        if count.min_count == count.max_count:
+            return count.min_count
+        return f"{count.min_count}-{count.max_count}"
+
 
 class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     signature: "re.Pattern[str]" = pydantic.Field(
@@ -102,20 +129,25 @@ class BaseRegexSignature(BaseSignature, pydantic.BaseModel, frozen=True):
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
-    def check_files(self, search_paths: Iterable[Path]) -> list[Path]:
-        return [
-            path.resolve()
-            for path, match_count in rip_regex(self.signature, search_paths).items()
-            if self.count in (match_count, 0)
-        ]
+    def check_files(self, search_paths: set[Path], search_root: Path) -> list[Path]:
+        # Limit the search to avoid too many arguments to ripgrep
+        match_limit = 100
+        if len(search_paths) > match_limit:
+            search_paths_for_rg = {search_root}
+        else:
+            search_paths_for_rg = search_paths
+        file_to_match_count = rip_regex(self.signature, search_paths_for_rg)
+        if self.count.min_count > 0:
+            # Optimization: do not iterate over files with 0 matches
+            return [path.resolve() for path, match_count in file_to_match_count.items() if match_count in self.count]
+        # rip_regex only includes files with count > 0 in the result.
+        return [path.resolve() for path in search_paths if file_to_match_count.get(path, 0) in self.count]
 
     def check_strings(self, strings: Iterable[str]) -> list[str]:
         results: list[str] = []
         for string in strings:
             match_count = len(self.signature.findall(string))
-            if match_count == 0:
-                continue
-            if self.count in (match_count, 0):
+            if match_count in self.count:
                 results.append(string)
         return results
 
@@ -173,7 +205,7 @@ class TreeSitterSignature(BaseSignature, pydantic.BaseModel, frozen=True):
     type: Literal["treesitter"] = "treesitter"
     """The type of the signature."""
 
-    def check_files(self, search_paths: Iterable[Path]) -> list[Path]:
+    def check_files(self, search_paths: set[Path], search_root: Path) -> list[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
     def check_strings(self, strings: Iterable[str]) -> list[str]:

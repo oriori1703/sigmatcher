@@ -54,12 +54,9 @@ def filter_signature_matches(
     all_matches: set[SignatureMatch] = set(initial_matches)
     for signature in signatures:
         signature_match = check_signature_callback(signature, all_matches)
-        if signature.count == 0:
-            all_matches.difference_update(signature_match)
-        else:
-            all_matches.intersection_update(signature_match)
-            if len(all_matches) == 0:
-                break
+        all_matches.intersection_update(signature_match)
+        if len(all_matches) == 0:
+            break
 
     return all_matches
 
@@ -123,20 +120,13 @@ class ClassAnalyzer(Analyzer):
         # Make sure the first signature is a whitelist signature in order to improve performance
         whitelist_signature_index = 0
         for i, signature in enumerate(signatures):
-            if signature.count != 0:
+            if signature.count.min_count > 0:
                 whitelist_signature_index = i
                 break
         signatures.insert(0, signatures.pop(whitelist_signature_index))
 
         def check_signature_callback(signature: Signature, matches: set[Path]) -> list[Path]:
-            # Limit the search avoid too many arguments to ripgrep
-            match_limit = 100
-            if len(matches) < match_limit:
-                search_paths = matches
-            else:
-                search_paths = {self.search_root}
-
-            return signature.resolve_macros(results).check_files(search_paths)
+            return signature.resolve_macros(results).check_files(matches, self.search_root)
 
         initial_matches = get_smali_files(self.search_root)
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
