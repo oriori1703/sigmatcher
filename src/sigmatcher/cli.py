@@ -13,11 +13,13 @@ import pydantic.json_schema
 import pydantic_core
 import typer
 import yaml
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
+from rich.padding import Padding
 
 import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
+from sigmatcher.exceptions import DependencyMatchError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
 
@@ -189,31 +191,50 @@ def _get_apk_version(unpacked_path: Path) -> str | None:
     return apk_version
 
 
-def _output_results(
-    results: dict[str, Result | Exception],
-    output_file: Path | None,
-    output_format: MappingFormat,
+def _output_successful_results(
+    results: dict[str, MatchedClass], output_file: Path | None, output_format: MappingFormat
 ) -> None:
-    successful_results: dict[str, MatchedClass] = {}
-    unsuccessful_results: dict[str, Exception] = {}
-    for analyzer_name, result in results.items():
-        if isinstance(result, Exception):
-            unsuccessful_results[analyzer_name] = result
-        elif isinstance(result, MatchedClass):
-            successful_results[analyzer_name] = result
-
-    mapping_output = convert_to_format(successful_results, output_format)
+    mapping_output = convert_to_format(results, output_format)
     if output_file is None:
         stdout_console.print(mapping_output)
     else:
         output_file.write_text(mapping_output)
 
-    for analyzer_name, result in unsuccessful_results.items():
-        stderr_console.print(f"[yellow]Error in {analyzer_name} - {result!s}[/yellow]")
+
+def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
+    error_message = f"[red]{error.analyzer_name}[/red] - {error.short_message()}"
+    if debug and (debug_message := error.debug_message()):
+        formated_debug_message = Padding(f"[yellow]{debug_message}[/yellow]", (0, 4))
+        return Group(error_message, "[yellow]Debug Info:[/yellow]", formated_debug_message)
+
+    return Group(error_message)
+
+
+def _output_results(
+    results: dict[str, Result | SigmatcherError],
+    output_file: Path | None,
+    output_format: MappingFormat,
+    debug: bool,
+) -> None:
+    successful_results: dict[str, MatchedClass] = {}
+    failed_results: dict[str, SigmatcherError] = {}
+
+    for analyzer_name, result in results.items():
+        if isinstance(result, Exception):
+            failed_results[analyzer_name] = result
+        elif isinstance(result, MatchedClass):
+            successful_results[analyzer_name] = result
+
+    _output_successful_results(successful_results, output_file, output_format)
+    if not failed_results:
+        return
+    stderr_console.print("Errors:")
+    for result in failed_results.values():
+        stderr_console.print(_render_error(result, debug))
 
 
 @app.command()
-def analyze(
+def analyze(  # noqa: PLR0913
     apk: Annotated[
         Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
     ],
@@ -228,6 +249,9 @@ def analyze(
     ],
     output_file: Annotated[Path | None, typer.Option(help="Output path for the final mapping output")] = None,
     output_format: Annotated[MappingFormat, typer.Option(help="The output mapping format")] = MappingFormat.RAW,
+    debug: Annotated[
+        bool, typer.Option(help="Provide more verbose error messages to help you debug match failures")
+    ] = False,
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
@@ -244,7 +268,7 @@ def analyze(
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
-    _output_results(results, output_file, output_format)
+    _output_results(results, output_file, output_format, debug)
 
 
 def main() -> None:

@@ -7,27 +7,17 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
 
+import pydantic
+from packaging.specifiers import SpecifierSet
+
+from sigmatcher.exceptions import InvalidMacroModifierError, SigmatcherError
+from sigmatcher.grep import rip_regex
+from sigmatcher.results import Result
+
 if sys.version_info < (3, 11):
     from typing_extensions import Self
 else:
     from typing import Self
-
-import pydantic
-from packaging.specifiers import SpecifierSet
-
-from sigmatcher.grep import rip_regex
-from sigmatcher.results import Result
-
-
-class InvalidMacroModifierError(Exception):
-    """
-    Exception raised when an invalid macro modifier is encountered.
-    """
-
-    def __init__(self, modifier: str, class_name: str) -> None:
-        self.modifier = modifier
-        self.class_name = class_name
-        super().__init__(f"Invalid macro modifier: '{modifier}' for class '{class_name}'")
 
 
 def is_in_version_range(app_version: str | None, version_range: str | list[str] | None) -> bool:
@@ -71,7 +61,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         raise NotImplementedError()
 
     def resolve_macro(
-        self, results: dict[str, Result | Exception], result_identifier: str, result_modifier: str
+        self, results: dict[str, Result | SigmatcherError], result_identifier: str, result_modifier: str
     ) -> str:
         result = results[result_identifier]
         assert not isinstance(result, Exception)
@@ -85,7 +75,7 @@ class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrin
         return resolved_macro
 
     @abstractmethod
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | SigmatcherError]) -> Self:
         raise NotImplementedError()
 
     def is_in_version_range(self, app_version: str | None) -> bool:
@@ -169,7 +159,7 @@ class BaseRegexSignature(BaseSignature, frozen=True):
     def _get_raw_macros(self) -> set[str]:
         return set(self.MACRO_REGEX.findall(self.signature.pattern))
 
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | SigmatcherError]) -> Self:
         if not self._get_raw_macros:
             return self
 
@@ -217,13 +207,15 @@ class TreeSitterSignature(BaseSignature, frozen=True):
     def get_dependencies(self) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
-    def resolve_macros(self, results: dict[str, Result | Exception]) -> Self:
+    def resolve_macros(self, results: dict[str, Result | SigmatcherError]) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
 
 Signature: TypeAlias = Annotated[
     RegexSignature | GlobSignature | TreeSitterSignature, pydantic.Field(discriminator="type")
 ]
+
+SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 
 class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
