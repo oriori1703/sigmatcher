@@ -1,6 +1,6 @@
 [project]
 name = "sigmatcher"
-version = "1.4.0"
+version = "1.5.0"
 authors = [{ name = "Ori Perry", email = "oriori1703@gmail.com" }]
 license = { file = "LICENSE" }
 readme = "README.md"
