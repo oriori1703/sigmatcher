@@ -126,7 +126,7 @@ def schema(
     definitions_schema = DEFINITIONS_TYPE_ADAPTER.json_schema(schema_generator=SigmatcherGenerateJsonSchema)
     definitions_schema_json = json.dumps(definitions_schema, indent=2)
     if output is not None:
-        output.write_text(definitions_schema_json)
+        _ = output.write_text(definitions_schema_json)
     else:
         stdout_console.print(definitions_schema_json)
 
@@ -164,7 +164,7 @@ def convert(
     if output_file is None:
         stdout_console.print(mapping_output)
     else:
-        output_file.write_text(mapping_output)
+        _ = output_file.write_text(mapping_output)
 
 
 def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
@@ -189,7 +189,7 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
             only_manifest_flag = "--only-manifest"
         else:
             only_manifest_flag = "--force-manifest"
-        subprocess.run(
+        _ = subprocess.run(
             [
                 apktool,
                 "decode",
@@ -202,7 +202,7 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
             ],
             check=True,
         )
-        shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
+        _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
     return unpacked_path
 
 
@@ -224,7 +224,7 @@ def _output_successful_results(
     if output_file is None:
         stdout_console.print(mapping_output, overflow="ignore", no_wrap=True, crop=False)
     else:
-        output_file.write_text(mapping_output)
+        _ = output_file.write_text(mapping_output)
 
 
 def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:

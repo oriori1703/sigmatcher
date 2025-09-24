@@ -70,18 +70,18 @@ class EnigmaFormatter(Formatter):
         result = StringIO()
         new_class = matched_class.new.to_java_representation()[1:-1]
         original_class = matched_class.original.to_java_representation()[1:-1]
-        result.write(f"CLASS {new_class} {original_class}\n")
+        _ = result.write(f"CLASS {new_class} {original_class}\n")
         for field in matched_class.matched_fields:
-            result.write(self.convert_field(field))
+            _ = result.write(self.convert_field(field))
         for method in matched_class.matched_methods:
-            result.write(self.convert_method(method))
+            _ = result.write(self.convert_method(method))
         return result.getvalue()
 
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         final = StringIO()
         for matched_class in matched_classes.values():
-            final.write(self.convert_class(matched_class))
+            _ = final.write(self.convert_class(matched_class))
         return final.getvalue()
 
 

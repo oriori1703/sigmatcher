@@ -64,6 +64,7 @@ warn_required_dynamic_aliases = true
 [tool.pyright]
 typeCheckingMode = "strict"
 reportImplicitOverride = true
+reportUnusedCallResult = true
 
 [tool.ruff]
 line-length = 120
