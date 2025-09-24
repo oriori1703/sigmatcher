@@ -97,7 +97,7 @@ class Analyzer(ABC):
         assert not isinstance(result, Exception)
 
         try:
-            resolved_macro = getattr(result.new, macro_statement.modifier)
+            resolved_macro = getattr(result.new, macro_statement.modifier)  # pyright: ignore[reportAny]
         except AttributeError:
             raise InvalidMacroModifierError(self.name, macro_statement, result.new.__class__.__name__) from None
 

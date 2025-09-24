@@ -68,6 +68,7 @@ reportUnusedCallResult = true
 
 # Basedpyright Rules
 reportUnannotatedClassAttribute = true
+reportAny = true
 
 [tool.ruff]
 line-length = 120

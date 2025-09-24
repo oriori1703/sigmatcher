@@ -44,7 +44,7 @@ class CountRange(pydantic.BaseModel):
         return self.min_count <= value <= self.max_count
 
 
-class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):
+class BaseSignature(ABC, pydantic.BaseModel, frozen=True, use_attribute_docstrings=True, extra="forbid"):  # pyright: ignore[reportUnsafeMultipleInheritance]
     version_range: str | list[str] | None = None
     """The version range in which the signature is valid."""
     count: Annotated[CountRange, pydantic.Field(json_schema_extra={"default": 1})] = CountRange(
@@ -161,7 +161,8 @@ class BaseRegexSignature(BaseSignature, frozen=True):
     @override
     def get_macro_definitions(self) -> set[MacroStatement]:
         macros: set[MacroStatement] = set()
-        for raw_macro in self.MACRO_REGEX.findall(self.signature.pattern):
+
+        for raw_macro in self.MACRO_REGEX.findall(self.signature.pattern):  # pyright: ignore[reportAny]
             assert isinstance(raw_macro, str)
             macro_subject, _, macro_modifier = raw_macro.rpartition(".")
             macros.add(MacroStatement(macro_subject, macro_modifier))

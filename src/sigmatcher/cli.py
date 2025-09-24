@@ -171,8 +171,8 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
     definition_groups: list[tuple[ClassDefinition, ...]] = []
     for signature_file in signatures:
         with signature_file.open("r") as f:
-            raw_yaml = yaml.safe_load(f)
-        definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+            raw_yaml = yaml.safe_load(f)  # pyright: ignore[reportAny]
+            definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
         definition_groups.append(tuple(definitions))
     return merge_definitions_groups(definition_groups)
 
@@ -209,7 +209,7 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
 def _get_apk_version(unpacked_path: Path) -> str | None:
     apktool_yaml_file = unpacked_path / "apktool.yml"
     with apktool_yaml_file.open() as f:
-        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]
+        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]  # pyright: ignore[reportAny]
 
     if isinstance(apk_version, float | int):
         apk_version = str(apk_version)

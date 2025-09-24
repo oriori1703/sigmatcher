@@ -144,14 +144,30 @@ class JadxRename(pydantic.BaseModel):
     )
 
 
+class JadxCodeData(pydantic.BaseModel):
+    renames: list[JadxRename]
+
+    model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True
+    )
+
+
+class JadxProjectFile(pydantic.BaseModel):
+    code_data: JadxCodeData
+
+    model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True
+    )
+
+
 class JadxFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
-        renames: list[JadxRename] = []
+        jadx_project = JadxProjectFile(code_data=JadxCodeData(renames=[]))
         for matched_class in matched_classes.values():
             class_node_ref = JadxNodeRef(ref_type="CLASS", decl_class=matched_class.new.to_full_name())
             class_rename = JadxRename(new_name=matched_class.original.to_full_name(), node_ref=class_node_ref)
-            renames.append(class_rename)
+            jadx_project.code_data.renames.append(class_rename)
             for matched_field in matched_class.matched_fields:
                 field_node_ref = JadxNodeRef(
                     ref_type="FIELD",
@@ -159,7 +175,7 @@ class JadxFormatter(Formatter):
                     short_id=matched_field.new.to_java_representation(),
                 )
                 field_rename = JadxRename(new_name=matched_field.original.name, node_ref=field_node_ref)
-                renames.append(field_rename)
+                jadx_project.code_data.renames.append(field_rename)
             for method in matched_class.matched_methods:
                 method_node_ref = JadxNodeRef(
                     ref_type="METHOD",
@@ -167,11 +183,8 @@ class JadxFormatter(Formatter):
                     short_id=method.new.to_java_representation(),
                 )
                 method_rename = JadxRename(new_name=method.original.name, node_ref=method_node_ref)
-                renames.append(method_rename)
-        return json.dumps(
-            {"codeData": {"renames": [rename.model_dump(mode="json", exclude_unset=True) for rename in renames]}},
-            indent=4,
-        )
+                jadx_project.code_data.renames.append(method_rename)
+        return jadx_project.model_dump_json(indent=4, exclude_unset=True)
 
 
 class JadxParser(Parser):
@@ -230,13 +243,13 @@ class JadxParser(Parser):
     @override
     def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         result: dict[str, MatchedClass] = {}
-        raw_jadx_dict = json.loads(raw_input)
-        jadex_renames = pydantic.TypeAdapter(list[JadxRename]).validate_python(raw_jadx_dict["codeData"]["renames"])
+        jadx_project = JadxProjectFile.model_validate_json(raw_input)
+
         jadx_to_sigma_classes: dict[str, MatchedClass] = {}
         jadx_to_sigma_field: list[tuple[str, MatchedField]] = []
         jadx_to_sigma_method: list[tuple[str, MatchedMethod]] = []
 
-        for rename in jadex_renames:
+        for rename in jadx_project.code_data.renames:
             if rename.node_ref.ref_type == "CLASS":
                 matched_class = self._parse_class(rename)
                 result[matched_class.original.name] = matched_class
