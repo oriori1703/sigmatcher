@@ -1,9 +1,15 @@
 import dataclasses
 import graphlib
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
 from functools import cache
 from pathlib import Path
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 from sigmatcher.definitions import (
     ClassDefinition,
@@ -116,6 +122,7 @@ class Analyzer(ABC):
     def name(self) -> str:
         return self.definition.name
 
+    @override
     def __repr__(self) -> str:
         return self.name
 
@@ -125,6 +132,7 @@ class ClassAnalyzer(Analyzer):
     definition: ClassDefinition
     search_root: Path
 
+    @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
         signatures = list(self.get_resolved_signatures(results))
         if len(signatures) == 0:
@@ -161,6 +169,7 @@ class FieldAnalyzer(Analyzer):
     definition: FieldDefinition
     parent: ClassAnalyzer
 
+    @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedField:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -185,10 +194,12 @@ class FieldAnalyzer(Analyzer):
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
+    @override
     def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
+    @override
     def name(self) -> str:
         return f"{self.parent.name}.fields.{self.definition.name}"
 
@@ -198,6 +209,7 @@ class MethodAnalyzer(Analyzer):
     definition: MethodDefinition
     parent: ClassAnalyzer
 
+    @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedMethod:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -229,10 +241,12 @@ class MethodAnalyzer(Analyzer):
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
+    @override
     def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
+    @override
     def name(self) -> str:
         return f"{self.parent.name}.methods.{self.definition.name}"
 
@@ -242,6 +256,7 @@ class ExportAnalyzer(Analyzer):
     definition: ExportDefinition
     parent: ClassAnalyzer
 
+    @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedExport:
         parent_class_result = results[self.parent.name]
         assert isinstance(parent_class_result, MatchedClass)
@@ -261,10 +276,12 @@ class ExportAnalyzer(Analyzer):
 
         return MatchedExport.from_value(export_value)
 
+    @override
     def get_dependencies(self) -> set[str]:
         return super().get_dependencies() | {self.parent.name}
 
     @property
+    @override
     def name(self) -> str:
         return f"{self.parent.name}.exports.{self.definition.name}"
 

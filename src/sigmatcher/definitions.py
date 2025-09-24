@@ -17,6 +17,11 @@ if sys.version_info < (3, 11):
 else:
     from typing import Self
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 
 def is_in_version_range(app_version: str | None, version_range: str | list[str] | None) -> bool:
     if app_version is None or version_range is None:
@@ -113,6 +118,7 @@ class BaseRegexSignature(BaseSignature, frozen=True):
 
     MACRO_REGEX: "ClassVar[re.Pattern[str]]" = re.compile(r"\${(.*?)}")
 
+    @override
     def check_files(self, search_paths: set[Path], search_root: Path) -> list[Path]:
         # Limit the search to avoid too many arguments to ripgrep
         match_limit = 100
@@ -127,6 +133,7 @@ class BaseRegexSignature(BaseSignature, frozen=True):
         # rip_regex only includes files with count > 0 in the result.
         return [path.resolve() for path in search_paths if file_to_match_count.get(path, 0) in self.count]
 
+    @override
     def check_strings(self, strings: Iterable[str]) -> list[str]:
         results: list[str] = []
         for string in strings:
@@ -135,6 +142,7 @@ class BaseRegexSignature(BaseSignature, frozen=True):
                 results.append(string)
         return results
 
+    @override
     def capture(self, value: str) -> set[str]:
         match = self.signature.search(value)
         if match is None:
@@ -146,9 +154,11 @@ class BaseRegexSignature(BaseSignature, frozen=True):
 
         return set(match.groups())
 
+    @override
     def get_dependencies(self) -> list[str]:
         return [macro.subject for macro in self.get_macro_definitions()]
 
+    @override
     def get_macro_definitions(self) -> set[MacroStatement]:
         macros: set[MacroStatement] = set()
         for raw_macro in self.MACRO_REGEX.findall(self.signature.pattern):
@@ -158,6 +168,7 @@ class BaseRegexSignature(BaseSignature, frozen=True):
 
         return macros
 
+    @override
     def resolve_macro(self, macro_statement: MacroStatement, resolved_macro: str) -> Self:
         macro_string = f"{macro_statement.subject}.{macro_statement.modifier}"
         new_pattern = self.signature.pattern.replace(f"${{{macro_string}}}", re.escape(resolved_macro))
@@ -188,21 +199,27 @@ class TreeSitterSignature(BaseSignature, frozen=True):
     type: Literal["treesitter"] = "treesitter"
     """The type of the signature."""
 
+    @override
     def check_files(self, search_paths: set[Path], search_root: Path) -> list[Path]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    @override
     def check_strings(self, strings: Iterable[str]) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    @override
     def capture(self, value: str) -> set[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    @override
     def get_dependencies(self) -> list[str]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    @override
     def get_macro_definitions(self) -> set[MacroStatement]:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 
+    @override
     def resolve_macro(self, macro_statement: MacroStatement, resolved_macro: str) -> Self:
         raise NotImplementedError("TreeSitter signatures are not supported yet.")
 

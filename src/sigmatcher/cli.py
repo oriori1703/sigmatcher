@@ -7,6 +7,11 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 import platformdirs
 import pydantic
 import pydantic.json_schema
@@ -109,6 +114,7 @@ def schema(
     """
 
     class SigmatcherGenerateJsonSchema(pydantic.json_schema.GenerateJsonSchema):
+        @override
         def generate(
             self, schema: pydantic_core.CoreSchema, mode: pydantic.json_schema.JsonSchemaMode = "validation"
         ) -> pydantic.json_schema.JsonSchemaValue:

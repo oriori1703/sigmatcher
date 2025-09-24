@@ -33,7 +33,7 @@ dependencies = [
   "pyyaml>=6.0.1,<7",
   "platformdirs>=4.2.2,<5",
   "packaging>=24.1,<26",
-  "typing-extensions;python_version<'3.11'",
+  "typing-extensions;python_version<'3.12'",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +63,7 @@ warn_required_dynamic_aliases = true
 
 [tool.pyright]
 typeCheckingMode = "strict"
+reportImplicitOverride = true
 
 [tool.ruff]
 line-length = 120

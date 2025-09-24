@@ -1,5 +1,11 @@
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 if TYPE_CHECKING:
     from sigmatcher.definitions import MacroStatement, Signature
@@ -24,6 +30,7 @@ class SignaturesCountError(SigmatcherError):
 
 
 class NoSignaturesError(SignaturesCountError):
+    @override
     def short_message(self) -> str:
         return "Found no signatures! Make sure your version ranges are correct."
 
@@ -33,6 +40,7 @@ class TooManySignaturesError(SignaturesCountError):
         self.signatures = signatures
         super().__init__(analyzer_name, signatures, *args)
 
+    @override
     def short_message(self) -> str:
         return f"Found {len(self.signatures)} signatures. Field definitions should only have one."
 
@@ -42,6 +50,7 @@ class MatchError(SigmatcherError):
         self.signatures = signatures
         super().__init__(analyzer_name, signatures, *args)
 
+    @override
     def debug_message(self) -> str:
         if self.signatures is None:
             return ""
@@ -51,6 +60,7 @@ class MatchError(SigmatcherError):
 
 
 class NoMatchesError(MatchError):
+    @override
     def short_message(self) -> str:
         return "Found no matches!"
 
@@ -66,10 +76,12 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
         self.matches: set[SignatureMatch] = matches
         super().__init__(analyzer_name, signatures, matches, *args)
 
+    @override
     def debug_message(self) -> str:
         matches_message = "\n ".join(str(match) for match in self.matches)
         return f"{super().debug_message()}\n- Matches:\n {matches_message}"
 
+    @override
     def short_message(self) -> str:
         return "Found too many matches"
 
@@ -80,9 +92,11 @@ class DependencyMatchError(SigmatcherError):
         self.should_show_debug = True
         super().__init__(analyzer_name, missing_dependencies, *args)
 
+    @override
     def short_message(self) -> str:
         return "Skipped because of failed dependencies"
 
+    @override
     def debug_message(self) -> str:
         if not self.should_show_debug:
             return ""
@@ -100,11 +114,13 @@ class InvalidMacroModifierError(SigmatcherError):
         self.result_class_name = result_class_name
         super().__init__(analyzer_name, macro, result_class_name, *args)
 
+    @override
     def debug_message(self) -> str:
         return (
             f"Macro Subject: {self.macro.subject}\nMacro Modifier: {self.macro.modifier}\n"
             + f"Subject Class: {self.result_class_name}"
         )
 
+    @override
     def short_message(self) -> str:
         return "Invalid macro modifier"

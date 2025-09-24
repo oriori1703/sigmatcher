@@ -1,8 +1,14 @@
 import enum
 import json
+import sys
 from abc import ABC, abstractmethod
 from io import StringIO
 from typing import Literal
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 import pydantic
 import pydantic.alias_generators
@@ -23,16 +29,19 @@ class Parser(ABC):
 
 
 class RawFormatter(Formatter):
+    @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         return pydantic.RootModel[dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
 
 
 class RawParser(Parser):
+    @override
     def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         return pydantic.RootModel[dict[str, MatchedClass]].model_validate_json(raw_input).root
 
 
 class LegacyFormatter(Formatter):
+    @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         return json.dumps(
             {
@@ -68,6 +77,7 @@ class EnigmaFormatter(Formatter):
             result.write(self.convert_method(method))
         return result.getvalue()
 
+    @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         final = StringIO()
         for matched_class in matched_classes.values():
@@ -94,6 +104,7 @@ class EnigmaParser(Parser):
         original_method = Method(name=components[-2], argument_types="", return_type="")
         return MatchedMethod(new=new_method, original=original_method)
 
+    @override
     def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         result: dict[str, MatchedClass] = {}
         matched_class: MatchedClass | None = None
@@ -128,6 +139,7 @@ class JadxRename(pydantic.BaseModel):
 
 
 class JadxFormatter(Formatter):
+    @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         renames: list[JadxRename] = []
         for matched_class in matched_classes.values():
@@ -209,6 +221,7 @@ class JadxParser(Parser):
         original_method = Method(name=jadx_rename.new_name, argument_types="", return_type="")
         return (jadx_rename.node_ref.decl_class, MatchedMethod(new=new_method, original=original_method))
 
+    @override
     def parse(self, raw_input: str) -> dict[str, MatchedClass]:
         result: dict[str, MatchedClass] = {}
         raw_jadx_dict = json.loads(raw_input)
