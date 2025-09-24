@@ -3,7 +3,7 @@ import json
 import sys
 from abc import ABC, abstractmethod
 from io import StringIO
-from typing import Literal
+from typing import ClassVar, Literal
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -126,16 +126,22 @@ class EnigmaParser(Parser):
 
 
 class JadxNodeRef(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True)
     ref_type: Literal["CLASS", "FIELD", "METHOD"]
     decl_class: str
     short_id: str | None = None
 
+    model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True
+    )
+
 
 class JadxRename(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True)
     new_name: str
     node_ref: JadxNodeRef
+
+    model_config: ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel, validate_by_name=True
+    )
 
 
 class JadxFormatter(Formatter):

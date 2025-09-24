@@ -66,6 +66,9 @@ typeCheckingMode = "strict"
 reportImplicitOverride = true
 reportUnusedCallResult = true
 
+# Basedpyright Rules
+reportUnannotatedClassAttribute = true
+
 [tool.ruff]
 line-length = 120
 

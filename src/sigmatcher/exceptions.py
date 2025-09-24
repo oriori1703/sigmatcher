@@ -15,7 +15,7 @@ SignatureMatch = TypeVar("SignatureMatch", str, Path)
 
 class SigmatcherError(Exception):
     def __init__(self, analyzer_name: str, *args: object) -> None:
-        self.analyzer_name = analyzer_name
+        self.analyzer_name: str = analyzer_name
         super().__init__(analyzer_name, *args)
 
     def debug_message(self) -> str:
@@ -37,7 +37,7 @@ class NoSignaturesError(SignaturesCountError):
 
 class TooManySignaturesError(SignaturesCountError):
     def __init__(self, analyzer_name: str, signatures: "tuple[Signature, ...]", *args: object) -> None:
-        self.signatures = signatures
+        self.signatures: tuple[Signature, ...] = signatures
         super().__init__(analyzer_name, signatures, *args)
 
     @override
@@ -47,7 +47,7 @@ class TooManySignaturesError(SignaturesCountError):
 
 class MatchError(SigmatcherError):
     def __init__(self, analyzer_name: str, signatures: "tuple[Signature,...] | None", *args: object) -> None:
-        self.signatures = signatures
+        self.signatures: tuple[Signature, ...] | None = signatures
         super().__init__(analyzer_name, signatures, *args)
 
     @override
@@ -88,8 +88,8 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
 
 class DependencyMatchError(SigmatcherError):
     def __init__(self, analyzer_name: str, missing_dependencies: list[str], *args: object) -> None:
-        self.missing_dependencies = missing_dependencies
-        self.should_show_debug = True
+        self.missing_dependencies: list[str] = missing_dependencies
+        self.should_show_debug: bool = True
         super().__init__(analyzer_name, missing_dependencies, *args)
 
     @override
@@ -110,8 +110,8 @@ class InvalidMacroModifierError(SigmatcherError):
     """
 
     def __init__(self, analyzer_name: str, macro: "MacroStatement", result_class_name: str, *args: object) -> None:
-        self.macro = macro
-        self.result_class_name = result_class_name
+        self.macro: MacroStatement = macro
+        self.result_class_name: str = result_class_name
         super().__init__(analyzer_name, macro, result_class_name, *args)
 
     @override
