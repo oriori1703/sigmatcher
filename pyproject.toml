@@ -24,7 +24,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dynamic = ["version"]
-description = "Write signatures to automatically match java classes and methods between version"
+description = "Write signatures to automatically match java classes and methods between versions"
 
 requires-python = ">=3.10"
 dependencies = [
