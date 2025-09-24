@@ -4,6 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "sigmatcher"
+version = "1.4.0"
 authors = [{ name = "Ori Perry", email = "oriori1703@gmail.com" }]
 license = { file = "LICENSE" }
 readme = "README.md"
@@ -23,7 +24,6 @@ classifiers = [
   "Operating System :: OS Independent",
   "Typing :: Typed",
 ]
-dynamic = ["version"]
 description = "Write signatures to automatically match java classes and methods between versions"
 
 requires-python = ">=3.10"

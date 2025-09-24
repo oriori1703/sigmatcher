@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 
 [[package]]
@@ -333,6 +333,7 @@ wheels = [
 
 [[package]]
 name = "sigmatcher"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
@@ -368,7 +369,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'typing'", specifier = ">=6.0.1,<7" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-provides-extras = ["all", "typing"]
+provides-extras = ["typing", "all"]
 
 [package.metadata.requires-dev]
 dev = [
