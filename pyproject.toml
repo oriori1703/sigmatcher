@@ -105,7 +105,7 @@ extend-select = [
 
 extend-ignore = [
   "SIM108", # if-else-block-instead-of-if-exp
-  "E501",   # line-too-long
+  "ISC003", # explicit-string-concatenation
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]

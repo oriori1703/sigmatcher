@@ -101,7 +101,10 @@ class InvalidMacroModifierError(SigmatcherError):
         super().__init__(analyzer_name, macro, result_class_name, *args)
 
     def debug_message(self) -> str:
-        return f"Macro Subject: {self.macro.subject}\nMacro Modifier: {self.macro.modifier}\nSubject Class: {self.result_class_name}"
+        return (
+            f"Macro Subject: {self.macro.subject}\nMacro Modifier: {self.macro.modifier}\n"
+            + f"Subject Class: {self.result_class_name}"
+        )
 
     def short_message(self) -> str:
         return "Invalid macro modifier"

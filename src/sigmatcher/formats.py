@@ -253,7 +253,7 @@ def convert_to_format(matched_classes: dict[str, MatchedClass], output_format: M
     except KeyError:
         raise ValueError(
             f"The provided output format is not supported yet: {output_format}."
-            f"Supported formats are: {', '.join(FORMAT_TO_FORMATTER)}"
+            + f"Supported formats are: {', '.join(FORMAT_TO_FORMATTER)}"
         ) from None
 
 
@@ -270,5 +270,5 @@ def parse_from_format(raw_input: str, input_format: MappingFormat) -> dict[str, 
     except KeyError:
         raise ValueError(
             f"The provided input format is not supported yet: {input_format}."
-            f"Supported formats are: {', '.join(FORMAT_TO_PARSER)}"
+            + f"Supported formats are: {', '.join(FORMAT_TO_PARSER)}"
         ) from None
