@@ -186,15 +186,15 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
     unpacked_path = get_cache_directory(apk)
     if not unpacked_path.exists():
         if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
-            only_manifest_flag = "--only-manifest"
+            only_manifest_flags = ["--only-manifest"]
         else:
-            only_manifest_flag = "--force-manifest"
+            only_manifest_flags = ["--no-res", "--force-manifest"]
         _ = subprocess.run(
             [
                 apktool,
                 "decode",
                 apk,
-                only_manifest_flag,
+                *only_manifest_flags,
                 "--no-assets",
                 "-f",
                 "--output",
