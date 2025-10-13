@@ -271,17 +271,17 @@ class MappingFormat(str, enum.Enum):
     LEGACY = "legacy"
 
 
-FORMAT_TO_FORMATTER: dict[MappingFormat, type[Formatter]] = {
-    MappingFormat.RAW: RawFormatter,
-    MappingFormat.ENIGMA: EnigmaFormatter,
-    MappingFormat.JADX: JadxFormatter,
-    MappingFormat.LEGACY: LegacyFormatter,
+FORMAT_TO_FORMATTER: dict[MappingFormat, Formatter] = {
+    MappingFormat.RAW: RawFormatter(),
+    MappingFormat.ENIGMA: EnigmaFormatter(),
+    MappingFormat.JADX: JadxFormatter(),
+    MappingFormat.LEGACY: LegacyFormatter(),
 }
 
 
 def convert_to_format(matched_classes: dict[str, MatchedClass], output_format: MappingFormat) -> str:
     try:
-        return FORMAT_TO_FORMATTER[output_format]().convert(matched_classes)
+        return FORMAT_TO_FORMATTER[output_format].convert(matched_classes)
     except KeyError:
         raise ValueError(
             f"The provided output format is not supported yet: {output_format}."
@@ -289,16 +289,16 @@ def convert_to_format(matched_classes: dict[str, MatchedClass], output_format: M
         ) from None
 
 
-FORMAT_TO_PARSER: dict[MappingFormat, type[Parser]] = {
-    MappingFormat.RAW: RawParser,
-    MappingFormat.ENIGMA: EnigmaParser,
-    MappingFormat.JADX: JadxParser,
+FORMAT_TO_PARSER: dict[MappingFormat, Parser] = {
+    MappingFormat.RAW: RawParser(),
+    MappingFormat.ENIGMA: EnigmaParser(),
+    MappingFormat.JADX: JadxParser(),
 }
 
 
 def parse_from_format(raw_input: str, input_format: MappingFormat) -> dict[str, MatchedClass]:
     try:
-        return FORMAT_TO_PARSER[input_format]().parse(raw_input)
+        return FORMAT_TO_PARSER[input_format].parse(raw_input)
     except KeyError:
         raise ValueError(
             f"The provided input format is not supported yet: {input_format}."

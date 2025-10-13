@@ -277,7 +277,7 @@ def _output_results(
     failed_results: dict[str, SigmatcherError] = {}
 
     for analyzer_name, result in results.items():
-        if isinstance(result, Exception):
+        if isinstance(result, SigmatcherError):
             failed_results[analyzer_name] = result
         elif isinstance(result, MatchedClass):
             successful_results[analyzer_name] = result

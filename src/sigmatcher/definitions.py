@@ -289,16 +289,17 @@ def merge_definition(def1: TDefinition, def2: TDefinition) -> TDefinition:
 
     if isinstance(def1, ClassDefinition):
         assert isinstance(def2, ClassDefinition)
-        fields_to_update = {
-            "signatures": signatures,
-            "methods": merge_definitions_groups([def1.methods, def2.methods]),
-            "fields": merge_definitions_groups([def1.fields, def2.fields]),
-            "exports": merge_definitions_groups([def1.exports, def2.exports]),
-        }
-    else:
-        fields_to_update = {"signatures": signatures}
-
-    return def1.model_copy(update=fields_to_update)
+        return (
+            def1.model_copy(  # pyrefly: ignore[bad-return] related to https://github.com/facebook/pyrefly/issues/1274
+                update={
+                    "signatures": signatures,
+                    "methods": merge_definitions_groups([def1.methods, def2.methods]),
+                    "fields": merge_definitions_groups([def1.fields, def2.fields]),
+                    "exports": merge_definitions_groups([def1.exports, def2.exports]),
+                }
+            )
+        )
+    return def1.model_copy(update={"signatures": signatures})
 
 
 def merge_definitions_groups(definition_groups: Sequence[Sequence[TDefinition]]) -> tuple[TDefinition, ...]:

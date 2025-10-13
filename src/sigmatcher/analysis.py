@@ -77,7 +77,7 @@ class Analyzer(ABC):
         if matches is None or len(matches) == 0:
             raise NoMatchesError(self.name, signatures)
         if len(matches) > 1:
-            raise TooManyMatchesError(self.name, matches, signatures)
+            raise TooManyMatchesError[SignatureMatch](self.name, matches, signatures)
 
     def get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)

@@ -73,6 +73,13 @@ reportUnusedCallResult = true
 reportUnannotatedClassAttribute = true
 reportAny = true
 
+[tool.pyrefly]
+project-includes = ["**/*"]
+project-excludes = ["**/node_modules", "**/__pycache__", "**/*venv/**/*"]
+
+[tool.ty.rules]
+unused-ignore-comment = "error"
+
 [tool.ruff]
 line-length = 120
 
