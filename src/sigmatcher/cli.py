@@ -16,6 +16,7 @@ import platformdirs
 import pydantic
 import pydantic.json_schema
 import pydantic_core
+import rich.markup
 import typer
 import yaml
 from packaging import version
@@ -90,7 +91,7 @@ def get_cache_directory(apk: Path) -> Path:
 
 def version_callback(value: bool) -> None:
     if value:
-        stdout_console.print(f"Sigmatcher version: [green]{__version__}[/green]")
+        stdout_console.print(f"Sigmatcher version: [green]{rich.markup.escape(__version__)}[/green]")
         raise typer.Exit()
 
 
@@ -128,7 +129,7 @@ def schema(
     if output is not None:
         _ = output.write_text(definitions_schema_json)
     else:
-        stdout_console.print(definitions_schema_json)
+        stdout_console.print(rich.markup.escape(definitions_schema_json))
 
 
 def apktool_callback(value: str) -> str:
@@ -162,7 +163,7 @@ def convert(
 
     mapping_output = convert_to_format(intermidiate_mappings, output_format)
     if output_file is None:
-        stdout_console.print(mapping_output)
+        stdout_console.print(rich.markup.escape(mapping_output))
     else:
         _ = output_file.write_text(mapping_output)
 
@@ -222,15 +223,17 @@ def _output_successful_results(
 ) -> None:
     mapping_output = convert_to_format(results, output_format)
     if output_file is None:
-        stdout_console.print(mapping_output, overflow="ignore", no_wrap=True, crop=False)
+        stdout_console.print(rich.markup.escape(mapping_output), overflow="ignore", no_wrap=True, crop=False)
     else:
         _ = output_file.write_text(mapping_output)
 
 
 def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
-    error_message = f"[red]{error.analyzer_name}[/red] - {error.short_message()}"
+    error_message = (
+        f"[red]{rich.markup.escape(error.analyzer_name)}[/red] - {rich.markup.escape(error.short_message())}"
+    )
     if debug and (debug_message := error.debug_message()):
-        formated_debug_message = Padding(f"[yellow]{debug_message}[/yellow]", (0, 4))
+        formated_debug_message = Padding(f"[yellow]{rich.markup.escape(debug_message)}[/yellow]", (0, 4))
         return Group(error_message, "[yellow]Debug Info:[/yellow]", formated_debug_message)
 
     return Group(error_message)
