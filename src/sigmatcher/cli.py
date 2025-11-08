@@ -27,7 +27,7 @@ from rich.tree import Tree
 import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
-from sigmatcher.exceptions import DependencyMatchError, SigmatcherError
+from sigmatcher.errors import DependencyMatchError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
 
@@ -251,7 +251,7 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
     for result in failed_results.values():
         if isinstance(result, DependencyMatchError):
             result.should_show_debug = False
-            for dependecy in result.missing_dependencies:
+            for dependecy in result.failed_dependencies:
                 dependent_errors.setdefault(dependecy, []).append(result)
         else:
             top_level_errors.append(result)

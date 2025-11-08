@@ -32,7 +32,7 @@ class SignaturesCountError(SigmatcherError):
 class NoSignaturesError(SignaturesCountError):
     @override
     def short_message(self) -> str:
-        return "Found no signatures! Make sure your version ranges are correct."
+        return "Found no signatures! Make sure your version ranges are correct"
 
 
 class TooManySignaturesError(SignaturesCountError):
@@ -42,7 +42,7 @@ class TooManySignaturesError(SignaturesCountError):
 
     @override
     def short_message(self) -> str:
-        return f"Found {len(self.signatures)} signatures. Field definitions should only have one."
+        return f"Found {len(self.signatures)} signatures. Field definitions should only have one"
 
 
 class MatchError(SigmatcherError):
@@ -69,8 +69,8 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
     def __init__(
         self,
         analyzer_name: str,
-        matches: "set[SignatureMatch]",
         signatures: "tuple[Signature,...] | None",
+        matches: "set[SignatureMatch]",
         *args: object,
     ) -> None:
         self.matches: set[SignatureMatch] = matches
@@ -87,21 +87,21 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
 
 
 class DependencyMatchError(SigmatcherError):
-    def __init__(self, analyzer_name: str, missing_dependencies: list[str], *args: object) -> None:
-        self.missing_dependencies: list[str] = missing_dependencies
+    def __init__(self, analyzer_name: str, failed_dependencies: list[str], *args: object) -> None:
+        self.failed_dependencies: list[str] = failed_dependencies
         self.should_show_debug: bool = True
-        super().__init__(analyzer_name, missing_dependencies, *args)
-
-    @override
-    def short_message(self) -> str:
-        return "Skipped because of failed dependencies"
+        super().__init__(analyzer_name, failed_dependencies, *args)
 
     @override
     def debug_message(self) -> str:
         if not self.should_show_debug:
             return ""
-        dependencies_message = "\n ".join(self.missing_dependencies)
+        dependencies_message = "\n ".join(self.failed_dependencies)
         return f"- Dependecies: \n{dependencies_message}"
+
+    @override
+    def short_message(self) -> str:
+        return "Skipped because of failed dependencies"
 
 
 class InvalidMacroModifierError(SigmatcherError):
