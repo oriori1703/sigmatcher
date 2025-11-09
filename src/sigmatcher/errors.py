@@ -86,7 +86,24 @@ class TooManyMatchesError(MatchError, Generic[SignatureMatch]):
         return "Found too many matches"
 
 
-class DependencyMatchError(SigmatcherError):
+class DependencyError(SigmatcherError):
+    def __init__(self, analyzer_name: str, failed_dependencies: list[str], *args: object) -> None:
+        self.failed_dependencies: list[str] = failed_dependencies
+        super().__init__(analyzer_name, failed_dependencies, *args)
+
+    @override
+    def debug_message(self) -> str:
+        dependencies_message = "\n ".join(self.failed_dependencies)
+        return f"- Dependecies: \n{dependencies_message}"
+
+
+class MissingDependenciesError(DependencyError):
+    @override
+    def short_message(self) -> str:
+        return "Skipped because of missing dependencies. Make sure you included all of the signature files"
+
+
+class FailedDependencyError(DependencyError):
     def __init__(self, analyzer_name: str, failed_dependencies: list[str], *args: object) -> None:
         self.failed_dependencies: list[str] = failed_dependencies
         self.should_show_debug: bool = True
@@ -96,8 +113,7 @@ class DependencyMatchError(SigmatcherError):
     def debug_message(self) -> str:
         if not self.should_show_debug:
             return ""
-        dependencies_message = "\n ".join(self.failed_dependencies)
-        return f"- Dependecies: \n{dependencies_message}"
+        return super().debug_message()
 
     @override
     def short_message(self) -> str:

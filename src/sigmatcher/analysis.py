@@ -22,8 +22,9 @@ from sigmatcher.definitions import (
     SignatureMatch,
 )
 from sigmatcher.errors import (
-    DependencyMatchError,
+    FailedDependencyError,
     InvalidMacroModifierError,
+    MissingDependenciesError,
     NoMatchesError,
     NoSignaturesError,
     SigmatcherError,
@@ -90,7 +91,7 @@ class Analyzer(ABC):
                 failed_dependencies.append(dependency_name)
 
         if failed_dependencies:
-            raise DependencyMatchError(self.name, failed_dependencies)
+            raise FailedDependencyError(self.name, failed_dependencies)
 
     def resolve_macro(self, results: dict[str, Result | SigmatcherError], macro_statement: MacroStatement) -> str:
         result = results[macro_statement.subject]
@@ -322,13 +323,19 @@ def create_analyzers(
 def analyze(
     definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str | None
 ) -> dict[str, Result | SigmatcherError]:
+    results: dict[str, Result | SigmatcherError] = {}
     name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
+    ananlyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
-        sorter.add(analyzer.name, *analyzer.get_dependencies())
+        dependencies = analyzer.get_dependencies()
+        nonexistent_dependencies = dependencies.difference(ananlyzers_set)
+        if nonexistent_dependencies:
+            results[analyzer.name] = MissingDependenciesError(analyzer.name, list(nonexistent_dependencies))
+        else:
+            sorter.add(analyzer.name, *dependencies)
 
-    results: dict[str, Result | SigmatcherError] = {}
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
