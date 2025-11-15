@@ -65,13 +65,28 @@ get autocompletion and intellisense from your IDE.
 You can get it by running the following command:
 
 ```shell
-sigmatcher schema > definitions.schema.json
+sigmatcher schema --output definitions.schema.json
 ```
 
-To use the schema in your IDE, you can add the following comment to the top of your signature file:
+You can add the one of the following comments to the top of your signature file depending on your IDE:
+
+Intellij IDEs:
 
 ```yaml
 # $schema: ./definitions.schema.json
+```
+
+yaml-language-server IDEs (vs-code, neovim, etc):
+
+```yaml
+# yaml-language-server: $schema=./definitions.schema.json
+```
+
+You can also combine them to support both:
+
+```yaml
+# $schema: ./definitions.schema.json
+# yaml-language-server: $schema=./definitions.schema.json
 ```
 
 ### Structure of a Signature File
@@ -84,6 +99,7 @@ Here's a basic example of what a signature file looks like:
 
 ```yaml
 # $schema: ./definitions.schema.json
+# yaml-language-server: $schema=./definitions.schema.json
 
 - name: "ConnectionManager"
   package: "com.example.package.network"
@@ -181,6 +197,7 @@ Here's an example showing how macros can be used to create interdependent signat
 
 ```yaml
 # $schema: ./definitions.schema.json
+# yaml-language-server: $schema=./definitions.schema.json
 
 - name: "ConnectionManager"
 package: "com.example.package.network"
