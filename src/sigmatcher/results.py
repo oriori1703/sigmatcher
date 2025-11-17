@@ -1,14 +1,20 @@
+import sys
 from pathlib import Path
 from typing import TypeAlias
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 import pydantic
 
 
-class Export(pydantic.BaseModel):
+class Export(pydantic.BaseModel, frozen=True):
     value: str
 
 
-class MatchedExport(pydantic.BaseModel):
+class MatchedExport(pydantic.BaseModel, frozen=True):
     new: Export
 
     @classmethod
@@ -16,7 +22,7 @@ class MatchedExport(pydantic.BaseModel):
         return cls(new=Export(value=value))
 
 
-class Field(pydantic.BaseModel):
+class Field(pydantic.BaseModel, frozen=True):
     name: str
     type: str
 
@@ -33,12 +39,12 @@ class Field(pydantic.BaseModel):
         return self.to_java_representation()
 
 
-class MatchedField(pydantic.BaseModel):
+class MatchedField(pydantic.BaseModel, frozen=True):
     original: Field
     new: Field
 
 
-class Method(pydantic.BaseModel):
+class Method(pydantic.BaseModel, frozen=True):
     name: str
     argument_types: str
     return_type: str
@@ -57,12 +63,12 @@ class Method(pydantic.BaseModel):
         return self.to_java_representation()
 
 
-class MatchedMethod(pydantic.BaseModel):
+class MatchedMethod(pydantic.BaseModel, frozen=True):
     original: Method
     new: Method
 
 
-class Class(pydantic.BaseModel):
+class Class(pydantic.BaseModel, frozen=True):
     name: str
     package: str
 
@@ -96,7 +102,11 @@ class MatchedClass(pydantic.BaseModel):
     new: Class
     matched_methods: list[MatchedMethod]
     matched_fields: list[MatchedField]
-    smali_file: Path | None = pydantic.Field(default=None, exclude=True)
+    smali_file: Path | None = None
+
+    @override
+    def __hash__(self) -> int:
+        return hash((self.original, self.new))
 
 
 Result: TypeAlias = MatchedClass | MatchedField | MatchedMethod | MatchedExport

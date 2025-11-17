@@ -1,4 +1,3 @@
-import hashlib
 import io
 import json
 import shutil
@@ -7,12 +6,13 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+from sigmatcher.cache import CACHE_DIR_PATH, Cache
+
 if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
 
-import platformdirs
 import pydantic
 import pydantic.json_schema
 import pydantic_core
@@ -39,8 +39,6 @@ stderr_console = Console(stderr=True)
 cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
 
-CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
-
 
 @cache_app.command()
 def info(
@@ -59,7 +57,7 @@ def info(
     if apk is None:
         print(str(CACHE_DIR_PATH))
     else:
-        print(get_cache_directory(apk))
+        print(Cache.get_from_apk(apk).cache_dir)
 
 
 @cache_app.command()
@@ -77,16 +75,11 @@ def clean(
     Clean the cache directory.
     """
     if apk is not None:
-        shutil.rmtree(get_cache_directory(apk))
+        shutil.rmtree(Cache.get_from_apk(apk).cache_dir)
     else:
         for path in CACHE_DIR_PATH.iterdir():
             shutil.rmtree(path)
     stdout_console.print("[green]Successfully cleaned the cache directory.[/green]")
-
-
-def get_cache_directory(apk: Path) -> Path:
-    apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
-    return CACHE_DIR_PATH / apk_hash_hex
 
 
 def version_callback(value: bool) -> None:
@@ -183,29 +176,30 @@ def _get_apktool_version(apktool: str) -> str:
     return proc.stdout.decode()
 
 
-def _unpack_apk(apktool: str, apk: Path) -> Path:
-    unpacked_path = get_cache_directory(apk)
-    if not unpacked_path.exists():
-        if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
-            only_manifest_flags = ["--only-manifest"]
-        else:
-            only_manifest_flags = ["--no-res", "--force-manifest"]
-        _ = subprocess.run(
-            [
-                apktool,
-                "decode",
-                apk,
-                *only_manifest_flags,
-                "--no-assets",
-                "-f",
-                "--output",
-                unpacked_path.with_suffix(".tmp"),
-            ],
-            check=True,
-            stdout=sys.stderr,
-        )
-        _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-    return unpacked_path
+def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
+    unpacked_path = cache.get_apktool_cache_dir()
+    if unpacked_path.exists():
+        return
+
+    if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
+        only_manifest_flags = ["--only-manifest"]
+    else:
+        only_manifest_flags = ["--no-res", "--force-manifest"]
+    _ = subprocess.run(
+        [
+            apktool,
+            "decode",
+            apk,
+            *only_manifest_flags,
+            "--no-assets",
+            "-f",
+            "--output",
+            unpacked_path.with_suffix(".tmp"),
+        ],
+        check=True,
+        stdout=sys.stderr,
+    )
+    _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
 
 def _get_apk_version(unpacked_path: Path) -> str | None:
@@ -323,14 +317,15 @@ def analyze(  # noqa: PLR0913
     Analyze an APK file using the provided signatures.
     """
     merged_definitions = _read_definitions(signatures)
-    unpacked_path = _unpack_apk(apktool, apk)
+    cache = Cache.get_from_apk(apk)
+    _unpack_apk(apktool, apk, cache)
 
-    apk_version = _get_apk_version(unpacked_path)
+    apk_version = _get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
-    results = sigmatcher.analysis.analyze(merged_definitions, unpacked_path, apk_version)
+    results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
     _output_results(results, output_file, output_format, tree_errors, debug)
 
 

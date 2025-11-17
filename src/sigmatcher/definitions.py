@@ -4,6 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
 
@@ -160,6 +161,10 @@ class BaseRegexSignature(BaseSignature, frozen=True):
 
     @override
     def get_macro_definitions(self) -> set[MacroStatement]:
+        return self._cached_macro_definitions
+
+    @cached_property
+    def _cached_macro_definitions(self) -> set[MacroStatement]:
         macros: set[MacroStatement] = set()
 
         for raw_macro in self.MACRO_REGEX.findall(self.signature.pattern):  # pyright: ignore[reportAny]
@@ -279,7 +284,7 @@ class ClassDefinition(Definition, frozen=True):
 
 
 DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[ClassDefinition])
-
+SIGNATURES_TYPE_ADAPTER = pydantic.TypeAdapter(tuple[Signature, ...])
 
 TDefinition = TypeVar("TDefinition", bound=Definition)
 
