@@ -202,6 +202,7 @@ def _unpack_apk(apktool: str, apk: Path) -> Path:
                 unpacked_path.with_suffix(".tmp"),
             ],
             check=True,
+            stdout=sys.stderr,
         )
         _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
     return unpacked_path
