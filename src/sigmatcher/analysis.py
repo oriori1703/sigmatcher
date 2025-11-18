@@ -124,7 +124,7 @@ class Analyzer(ABC):
 
     def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
         signatures_hash = hashlib.sha256(SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results)))
-        return f"v1_{signatures_hash.hexdigest()}_{self.app_version}"
+        return f"v1_{self.name}_{self.app_version}_{signatures_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
@@ -353,8 +353,8 @@ def analyze(
             cache_key = analyzer.get_cache_key(results)
             if (result := previous_results_cache.get(cache_key)) is None:
                 result = analyzer.analyze(results)
-            results[cache_key] = result
-            new_results_cache[analyzer_name] = result
+            results[analyzer_name] = result
+            new_results_cache[cache_key] = result
         except SigmatcherError as e:
             results[analyzer_name] = e
     cache.write_results_cache(new_results_cache)

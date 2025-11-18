@@ -31,7 +31,9 @@ class Parser(ABC):
 class RawFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
-        return pydantic.RootModel[dict[str, MatchedClass]](matched_classes).model_dump_json(indent=4)
+        return pydantic.RootModel[dict[str, MatchedClass]](matched_classes).model_dump_json(
+            indent=4, exclude={"smali_file"}
+        )
 
 
 class RawParser(Parser):

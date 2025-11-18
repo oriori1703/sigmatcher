@@ -96,7 +96,7 @@ class MatchedClass(pydantic.BaseModel):
     new: Class
     matched_methods: list[MatchedMethod]
     matched_fields: list[MatchedField]
-    smali_file: Path | None = pydantic.Field(default=None, exclude=True)
+    smali_file: Path | None = None
 
 
 Result: TypeAlias = MatchedClass | MatchedField | MatchedMethod | MatchedExport
