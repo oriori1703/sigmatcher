@@ -10,12 +10,13 @@ else:
     from typing import Self
 
 import platformdirs
-from pydantic import BaseModel
+from pydantic import TypeAdapter
 
-from sigmatcher.definitions import Signature
 from sigmatcher.results import Result
 
 CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
+
+ResultsCacheType: TypeAlias = dict[str, Result]
 
 
 @dataclass
@@ -30,13 +31,16 @@ class Cache:
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"
 
-    def get_cache_file_path(self) -> Path:
+    def get_results_cache_path(self) -> Path:
         return self.cache_dir / "results_cache.json"
 
+    def get_results_cache(self) -> ResultsCacheType:
+        cache_path = self.get_results_cache_path()
+        if not cache_path.exists():
+            return {}
+        raw_cache = cache_path.read_bytes()
+        return TypeAdapter(ResultsCacheType).validate_json(raw_cache)
 
-class ResultCache(BaseModel):
-    signatures: tuple[Signature, ...]
-    result: Result
-
-
-ResultsCache: TypeAlias = dict[str, ResultCache]
+    def write_results_cache(self, results: ResultsCacheType) -> None:
+        cache_path = self.get_results_cache_path()
+        _ = cache_path.write_bytes(TypeAdapter(ResultsCacheType).dump_json(results))

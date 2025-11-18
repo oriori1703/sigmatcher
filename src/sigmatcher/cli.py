@@ -325,7 +325,7 @@ def analyze(  # noqa: PLR0913
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
-    results = sigmatcher.analysis.analyze(merged_definitions, cache.get_apktool_cache_dir(), apk_version)
+    results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
     _output_results(results, output_file, output_format, tree_errors, debug)
 
 

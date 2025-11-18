@@ -1,5 +1,6 @@
 import dataclasses
 import graphlib
+import hashlib
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
@@ -11,7 +12,9 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
+from sigmatcher.cache import Cache, ResultsCacheType
 from sigmatcher.definitions import (
+    SIGNATURES_TYPE_ADAPTER,
     ClassDefinition,
     Definition,
     ExportDefinition,
@@ -118,6 +121,10 @@ class Analyzer(ABC):
 
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
+
+    def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
+        signatures_hash = hashlib.sha256(SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results)))
+        return f"v1_{signatures_hash.hexdigest()}_{self.app_version}"
 
     @property
     def name(self) -> str:
@@ -321,10 +328,10 @@ def create_analyzers(
 
 
 def analyze(
-    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str | None
+    definitions: Sequence[ClassDefinition], cache: Cache, app_version: str | None
 ) -> dict[str, Result | SigmatcherError]:
     results: dict[str, Result | SigmatcherError] = {}
-    name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
+    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
     ananlyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
@@ -336,11 +343,19 @@ def analyze(
         else:
             sorter.add(analyzer.name, *dependencies)
 
+    previous_results_cache = cache.get_results_cache()
+    new_results_cache: ResultsCacheType = {}
+
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
             analyzer.check_dependencies(results)
-            results[analyzer_name] = analyzer.analyze(results)
+            cache_key = analyzer.get_cache_key(results)
+            if (result := previous_results_cache.get(cache_key)) is None:
+                result = analyzer.analyze(results)
+            results[cache_key] = result
+            new_results_cache[analyzer_name] = result
         except SigmatcherError as e:
             results[analyzer_name] = e
+    cache.write_results_cache(new_results_cache)
     return results

@@ -279,7 +279,7 @@ class ClassDefinition(Definition, frozen=True):
 
 
 DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[ClassDefinition])
-
+SIGNATURES_TYPE_ADAPTER = pydantic.TypeAdapter(tuple[Signature, ...])
 
 TDefinition = TypeVar("TDefinition", bound=Definition)
 
