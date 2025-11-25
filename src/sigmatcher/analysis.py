@@ -1,5 +1,6 @@
 import dataclasses
 import graphlib
+import hashlib
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
@@ -11,7 +12,9 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
+from sigmatcher.cache import Cache, ResultsCacheType
 from sigmatcher.definitions import (
+    SIGNATURES_TYPE_ADAPTER,
     ClassDefinition,
     Definition,
     ExportDefinition,
@@ -63,6 +66,33 @@ def get_smali_files(search_root: Path) -> frozenset[Path]:
     return frozenset(search_root.rglob("*.smali"))
 
 
+@cache
+def resolve_macro(result: Result | SigmatcherError, macro_statement: MacroStatement, analyzer_name: str) -> str:
+    assert not isinstance(result, Exception)
+
+    try:
+        resolved_macro = getattr(result.new, macro_statement.modifier)  # pyright: ignore[reportAny]
+    except AttributeError:
+        raise InvalidMacroModifierError(analyzer_name, macro_statement, result.new.__class__.__name__) from None
+
+    assert isinstance(resolved_macro, str)
+    return resolved_macro
+
+
+def resolve_signatures(
+    signatures: tuple[Signature, ...], results: dict[str, Result | SigmatcherError], analyzer_name: str
+) -> tuple[Signature, ...]:
+    resolved_signatures: list[Signature] = []
+    for signature in signatures:
+        resolved_signature = signature
+        for macro_statement in signature.get_macro_definitions():
+            resolved_macro = resolve_macro(results[macro_statement.subject], macro_statement, analyzer_name)
+            resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
+        resolved_signatures.append(resolved_signature)
+
+    return tuple(resolved_signatures)
+
+
 @dataclasses.dataclass(frozen=True)
 class Analyzer(ABC):
     definition: Definition
@@ -93,31 +123,15 @@ class Analyzer(ABC):
         if failed_dependencies:
             raise FailedDependencyError(self.name, failed_dependencies)
 
-    def resolve_macro(self, results: dict[str, Result | SigmatcherError], macro_statement: MacroStatement) -> str:
-        result = results[macro_statement.subject]
-        assert not isinstance(result, Exception)
-
-        try:
-            resolved_macro = getattr(result.new, macro_statement.modifier)  # pyright: ignore[reportAny]
-        except AttributeError:
-            raise InvalidMacroModifierError(self.name, macro_statement, result.new.__class__.__name__) from None
-
-        assert isinstance(resolved_macro, str)
-        return resolved_macro
-
     def get_resolved_signatures(self, results: dict[str, Result | SigmatcherError]) -> tuple[Signature, ...]:
-        resolved_signatures: list[Signature] = []
-        for signature in self.get_signatures_for_version():
-            resolved_signature = signature
-            for macro_statement in signature.get_macro_definitions():
-                resolved_macro = self.resolve_macro(results, macro_statement)
-                resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
-            resolved_signatures.append(resolved_signature)
-
-        return tuple(resolved_signatures)
+        return resolve_signatures(self.get_signatures_for_version(), results, self.name)
 
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
+
+    def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
+        signatures_hash = hashlib.sha256(SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results)))
+        return f"v1_{self.name}_{self.app_version}_{signatures_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
@@ -321,10 +335,10 @@ def create_analyzers(
 
 
 def analyze(
-    definitions: Sequence[ClassDefinition], unpacked_path: Path, app_version: str | None
+    definitions: Sequence[ClassDefinition], cache: Cache, app_version: str | None
 ) -> dict[str, Result | SigmatcherError]:
     results: dict[str, Result | SigmatcherError] = {}
-    name_to_analyzer = create_analyzers(definitions, unpacked_path, app_version)
+    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
     ananlyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
@@ -336,11 +350,22 @@ def analyze(
         else:
             sorter.add(analyzer.name, *dependencies)
 
+    previous_results_cache = cache.get_results_cache()
+    new_results_cache: ResultsCacheType = {}
+
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
             analyzer.check_dependencies(results)
-            results[analyzer_name] = analyzer.analyze(results)
+
+            cache_key = analyzer.get_cache_key(results)
+            result = previous_results_cache.get(cache_key)
+            if result is None:
+                result = analyzer.analyze(results)
+
+            results[analyzer_name] = result
+            new_results_cache[cache_key] = result
         except SigmatcherError as e:
             results[analyzer_name] = e
+    cache.write_results_cache(new_results_cache)
     return results
