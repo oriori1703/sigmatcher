@@ -14,7 +14,7 @@ from pydantic import TypeAdapter
 
 from sigmatcher.results import Result
 
-CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
+DEFAULT_CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
 
 ResultsCacheType: TypeAlias = dict[str, Result]
 
@@ -24,9 +24,9 @@ class Cache:
     cache_dir: Path
 
     @classmethod
-    def get_from_apk(cls, apk: Path) -> Self:
+    def get_from_apk(cls, base_cache_dir: Path, apk: Path) -> Self:
         apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
-        return cls(CACHE_DIR_PATH / f"v1_{apk_hash_hex}")
+        return cls(base_cache_dir / f"v1_{apk_hash_hex}")
 
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"

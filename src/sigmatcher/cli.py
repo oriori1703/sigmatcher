@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
-from sigmatcher.cache import CACHE_DIR_PATH, Cache
+from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -50,14 +50,20 @@ def info(
             exists=True,
         ),
     ] = None,
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
+        ),
+    ] = DEFAULT_CACHE_DIR_PATH,
 ) -> None:
     """
     Get the path to Sigmatcher's cache directory.
     """
     if apk is None:
-        print(str(CACHE_DIR_PATH))
+        print(str(cache_dir))
     else:
-        print(Cache.get_from_apk(apk).cache_dir)
+        print(Cache.get_from_apk(cache_dir, apk).cache_dir)
 
 
 @cache_app.command()
@@ -70,14 +76,20 @@ def clean(
             exists=True,
         ),
     ] = None,
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
+        ),
+    ] = DEFAULT_CACHE_DIR_PATH,
 ) -> None:
     """
     Clean the cache directory.
     """
     if apk is not None:
-        shutil.rmtree(Cache.get_from_apk(apk).cache_dir)
+        shutil.rmtree(Cache.get_from_apk(cache_dir, apk).cache_dir)
     else:
-        for path in CACHE_DIR_PATH.iterdir():
+        for path in cache_dir.iterdir():
             shutil.rmtree(path)
     stdout_console.print("[green]Successfully cleaned the cache directory.[/green]")
 
@@ -312,12 +324,18 @@ def analyze(  # noqa: PLR0913
     apktool: Annotated[
         str, typer.Option(help="The command to use when running apktool", callback=apktool_callback)
     ] = "apktool",
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
+        ),
+    ] = DEFAULT_CACHE_DIR_PATH,
 ) -> None:
     """
     Analyze an APK file using the provided signatures.
     """
     merged_definitions = _read_definitions(signatures)
-    cache = Cache.get_from_apk(apk)
+    cache = Cache.get_from_apk(cache_dir, apk)
     _unpack_apk(apktool, apk, cache)
 
     apk_version = _get_apk_version(cache.get_apktool_cache_dir())
