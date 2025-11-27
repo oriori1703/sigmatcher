@@ -40,8 +40,9 @@ cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
 
 
-@cache_app.command()
-def info(
+@cache_app.command(name="info", hidden=True)
+@cache_app.command(name="dir")
+def get_dir(
     apk: Annotated[
         Path | None,
         typer.Argument(
