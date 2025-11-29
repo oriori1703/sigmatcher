@@ -331,7 +331,7 @@ def analyze(  # noqa: PLR0913
             help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
         ),
     ] = DEFAULT_CACHE_DIR_PATH,
-) -> None:
+) -> dict[str, Result | SigmatcherError]:
     """
     Analyze an APK file using the provided signatures.
     """
@@ -346,6 +346,7 @@ def analyze(  # noqa: PLR0913
 
     results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
     _output_results(results, output_file, output_format, tree_errors, debug)
+    return results
 
 
 def main() -> None:
