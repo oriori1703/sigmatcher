@@ -11,6 +11,7 @@ import pydantic
 
 
 class Export(pydantic.BaseModel, frozen=True):
+    name: str
     value: str
 
 
@@ -18,8 +19,8 @@ class MatchedExport(pydantic.BaseModel, frozen=True):
     new: Export
 
     @classmethod
-    def from_value(cls, value: str) -> "MatchedExport":
-        return cls(new=Export(value=value))
+    def from_value(cls, name: str, value: str) -> "MatchedExport":
+        return cls(new=Export(name=name, value=value))
 
 
 class Field(pydantic.BaseModel, frozen=True):
@@ -102,6 +103,7 @@ class MatchedClass(pydantic.BaseModel):
     new: Class
     matched_methods: list[MatchedMethod]
     matched_fields: list[MatchedField]
+    exports: list[MatchedExport]
     smali_file: Path | None = None
 
     @override
