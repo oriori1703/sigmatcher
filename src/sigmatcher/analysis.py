@@ -175,7 +175,7 @@ class ClassAnalyzer(Analyzer):
         new_class = Class.from_java_representation(raw_class_name)
         original_class = Class(name=self.definition.name, package=self.definition.package or new_class.package)
         return MatchedClass(
-            original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[]
+            original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[], exports=[]
         )
 
 
@@ -289,7 +289,9 @@ class ExportAnalyzer(Analyzer):
         self.check_match_count(captured_names, signatures)
         export_value = next(iter(captured_names))
 
-        return MatchedExport.from_value(export_value)
+        result = MatchedExport.from_value(self.definition.name, export_value)
+        parent_class_result.exports.append(result)
+        return result
 
     @override
     def get_dependencies(self) -> set[str]:
