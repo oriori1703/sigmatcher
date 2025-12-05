@@ -31,8 +31,13 @@ class Parser(ABC):
 class RawFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
-        return pydantic.RootModel[dict[str, MatchedClass]](matched_classes).model_dump_json(
-            indent=4, exclude={"smali_file"}
+        # Serialize each class on its own to exclude the smali_file field, instead of using a RootModel because of https://github.com/pydantic/pydantic/discussions/11383
+        return json.dumps(
+            {
+                key: matched_class.model_dump(mode="dict", exclude={"smali_file"})
+                for key, matched_class in matched_classes.items()
+            },
+            indent=4,
         )
 
 
