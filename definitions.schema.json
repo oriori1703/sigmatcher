@@ -53,6 +53,12 @@
           "description": "The version range in which the definition is valid.",
           "title": "Version Range"
         },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
+        },
         "package": {
           "anyOf": [
             {
@@ -153,6 +159,12 @@
           "default": null,
           "description": "The version range in which the definition is valid.",
           "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
         }
       },
       "required": [
@@ -214,6 +226,12 @@
           "default": null,
           "description": "The version range in which the definition is valid.",
           "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
         }
       },
       "required": [
@@ -332,6 +350,12 @@
           "default": null,
           "description": "The version range in which the definition is valid.",
           "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
         }
       },
       "required": [
