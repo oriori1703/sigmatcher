@@ -355,6 +355,8 @@ def analyze(
     previous_results_cache = cache.get_results_cache()
     new_results_cache: ResultsCacheType = {}
 
+    excluded_results: list[str] = []
+
     for analyzer_name in sorter.static_order():
         analyzer = name_to_analyzer[analyzer_name]
         try:
@@ -367,7 +369,15 @@ def analyze(
 
             results[analyzer_name] = result
             new_results_cache[cache_key] = result
+
+            if analyzer.definition.exclude:
+                excluded_results.append(analyzer_name)
         except SigmatcherError as e:
             results[analyzer_name] = e
+
     cache.write_results_cache(new_results_cache)
+
+    for excluded_result_name in excluded_results:
+        del results[excluded_result_name]
+
     return results

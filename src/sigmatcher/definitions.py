@@ -244,6 +244,9 @@ class Definition(pydantic.BaseModel, frozen=True, use_attribute_docstrings=True,
     """A list of signatures that define the definition."""
     version_range: str | list[str] | None = None
     """The version range in which the definition is valid."""
+    exclude: bool = False
+    """Exclude this definition from the final results.
+    This could be useful if the definition is only used to find something else using a macro"""
 
     def get_signatures_for_version(self, app_version: str | None) -> tuple[Signature, ...]:
         if app_version is None:
