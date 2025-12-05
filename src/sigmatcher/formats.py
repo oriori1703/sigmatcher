@@ -56,6 +56,7 @@ class LegacyFormatter(Formatter):
                     "className": f"{matched_class.new.package}.{matched_class.new.name}",
                     "methods": {method.original.name: method.new.name for method in matched_class.matched_methods},
                     "fields": {field.original.name: field.new.name for field in matched_class.matched_fields},
+                    "exports": {export.new.name: export.new.value for export in matched_class.exports},
                 }
                 for matched_class in matched_classes.values()
             },
@@ -96,7 +97,7 @@ class EnigmaParser(Parser):
     def _parse_class(self, components: list[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
         original_class = Class.from_java_representation(f"L{components[-1]};")
-        return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[])
+        return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[], exports=[])
 
     def _parse_field(self, components: list[str]) -> MatchedField:
         new_field = Field(name=components[1], type=components[-1])
@@ -201,11 +202,12 @@ class JadxParser(Parser):
             original=Class.from_full_name(jadx_rename.new_name),
             matched_methods=[],
             matched_fields=[],
+            exports=[],
         )
 
     def _parse_holder_class(self, decl_class: str) -> MatchedClass:
         clazz = Class.from_full_name(decl_class)
-        return MatchedClass(new=clazz, original=clazz, matched_methods=[], matched_fields=[])
+        return MatchedClass(new=clazz, original=clazz, matched_methods=[], matched_fields=[], exports=[])
 
     def _parse_fields(
         self,
