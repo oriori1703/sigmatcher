@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -200,22 +201,28 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
     else:
         only_manifest_flags = ["--no-res", "--force-manifest"]
 
-    # APKTool in non-interactive mode will run the `pause` command on Windows, so send a newline as input
-    _ = subprocess.run(
-        [
-            apktool,
-            "decode",
-            apk,
-            *only_manifest_flags,
-            "--no-assets",
-            "-f",
-            "--output",
-            unpacked_path.with_suffix(".tmp"),
-        ],
-        check=True,
-        stdout=sys.stderr,
-        input=b"\n"
-    )
+    with tempfile.NamedTemporaryFile(delete_on_close=False) as temp_apk:
+        # On Windows, CreateProcess() implicitly spawns cmd.exe when executing batch files,
+        # even if the application didn't specify them in the command line.
+        # Since apktool on Windows is offered as a batch file, this can lead to command injection.
+        # Therefore we will run the command on a temporary file with a random name instead.
+        temp_apk.close()
+        _ = shutil.copy(apk, temp_apk.name)
+        _ = subprocess.run(
+            [
+                apktool,
+                "decode",
+                temp_apk.name,
+                *only_manifest_flags,
+                "--no-assets",
+                "-f",
+                "--output",
+                unpacked_path.with_suffix(".tmp"),
+            ],
+            check=True,
+            stdout=sys.stderr,
+            input=b"\n"# APKTool in non-interactive mode will run the `pause` command after execution on Windows
+        )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
 
