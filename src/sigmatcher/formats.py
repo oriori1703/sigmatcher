@@ -66,10 +66,12 @@ class LegacyFormatter(Formatter):
 
 
 class EnigmaFormatter(Formatter):
-    def convert_field(self, field: MatchedField) -> str:
+    @staticmethod
+    def _convert_field(field: MatchedField) -> str:
         return f"\tFIELD {field.new.name} {field.original.name} {field.new.type}\n"
 
-    def convert_method(self, method: MatchedMethod) -> str:
+    @staticmethod
+    def _convert_method(method: MatchedMethod) -> str:
         return (
             f"\tMETHOD {method.new.name} {method.original.name} ({method.new.argument_types}){method.new.return_type}\n"
         )
@@ -80,9 +82,9 @@ class EnigmaFormatter(Formatter):
         original_class = matched_class.original.to_java_representation()[1:-1]
         _ = result.write(f"CLASS {new_class} {original_class}\n")
         for field in matched_class.matched_fields:
-            _ = result.write(self.convert_field(field))
+            _ = result.write(self._convert_field(field))
         for method in matched_class.matched_methods:
-            _ = result.write(self.convert_method(method))
+            _ = result.write(self._convert_method(method))
         return result.getvalue()
 
     @override
@@ -94,17 +96,20 @@ class EnigmaFormatter(Formatter):
 
 
 class EnigmaParser(Parser):
-    def _parse_class(self, components: list[str]) -> MatchedClass:
+    @staticmethod
+    def _parse_class(components: list[str]) -> MatchedClass:
         new_class = Class.from_java_representation(f"L{components[1]};")
         original_class = Class.from_java_representation(f"L{components[-1]};")
         return MatchedClass(new=new_class, original=original_class, matched_methods=[], matched_fields=[], exports=[])
 
-    def _parse_field(self, components: list[str]) -> MatchedField:
+    @staticmethod
+    def _parse_field(components: list[str]) -> MatchedField:
         new_field = Field(name=components[1], type=components[-1])
         original_field = Field(name=components[-2], type="")
         return MatchedField(new=new_field, original=original_field)
 
-    def _parse_method(self, components: list[str]) -> MatchedMethod:
+    @staticmethod
+    def _parse_method(components: list[str]) -> MatchedMethod:
         method_types = components[-1]
         argument_type, return_type = method_types[1:].split(")")
 
@@ -196,7 +201,8 @@ class JadxFormatter(Formatter):
 
 
 class JadxParser(Parser):
-    def _parse_class(self, jadx_rename: JadxRename) -> MatchedClass:
+    @staticmethod
+    def _parse_class(jadx_rename: JadxRename) -> MatchedClass:
         return MatchedClass(
             new=Class.from_full_name(jadx_rename.node_ref.decl_class),
             original=Class.from_full_name(jadx_rename.new_name),
@@ -205,12 +211,13 @@ class JadxParser(Parser):
             exports=[],
         )
 
-    def _parse_holder_class(self, decl_class: str) -> MatchedClass:
+    @staticmethod
+    def _parse_holder_class(decl_class: str) -> MatchedClass:
         clazz = Class.from_full_name(decl_class)
         return MatchedClass(new=clazz, original=clazz, matched_methods=[], matched_fields=[], exports=[])
 
+    @staticmethod
     def _parse_fields(
-        self,
         result: dict[str, MatchedClass],
         jadx_to_sigma_classes: dict[str, MatchedClass],
         jadx_to_sigma_field: list[tuple[str, MatchedField]],
@@ -218,19 +225,20 @@ class JadxParser(Parser):
         for decl_class, matched_field in jadx_to_sigma_field:
             matched_class = jadx_to_sigma_classes.get(decl_class)
             if matched_class is None:
-                matched_class = self._parse_holder_class(decl_class)
+                matched_class = JadxParser._parse_holder_class(decl_class)
                 result[matched_class.original.name] = matched_class
                 jadx_to_sigma_classes[decl_class] = matched_class
             matched_class.matched_fields.append(matched_field)
 
-    def _parse_field(self, jadx_rename: JadxRename) -> tuple[str, MatchedField]:
+    @staticmethod
+    def _parse_field(jadx_rename: JadxRename) -> tuple[str, MatchedField]:
         assert jadx_rename.node_ref.short_id is not None
         new_field = Field.from_java_representation(jadx_rename.node_ref.short_id)
         original_field = Field(name=jadx_rename.new_name, type="")
         return (jadx_rename.node_ref.decl_class, MatchedField(new=new_field, original=original_field))
 
+    @staticmethod
     def _parse_methods(
-        self,
         result: dict[str, MatchedClass],
         jadx_to_sigma_classes: dict[str, MatchedClass],
         jadx_to_sigma_method: list[tuple[str, MatchedMethod]],
@@ -238,12 +246,13 @@ class JadxParser(Parser):
         for decl_class, matched_method in jadx_to_sigma_method:
             matched_class = jadx_to_sigma_classes.get(decl_class)
             if matched_class is None:
-                matched_class = self._parse_holder_class(decl_class)
+                matched_class = JadxParser._parse_holder_class(decl_class)
                 result[matched_class.original.name] = matched_class
                 jadx_to_sigma_classes[decl_class] = matched_class
             matched_class.matched_methods.append(matched_method)
 
-    def _parse_method(self, jadx_rename: JadxRename) -> tuple[str, MatchedMethod]:
+    @staticmethod
+    def _parse_method(jadx_rename: JadxRename) -> tuple[str, MatchedMethod]:
         assert jadx_rename.node_ref.short_id is not None
         new_method = Method.from_java_representation(jadx_rename.node_ref.short_id)
         original_method = Method(name=jadx_rename.new_name, argument_types="", return_type="")

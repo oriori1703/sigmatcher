@@ -13,7 +13,6 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
-import pydantic
 import pydantic.json_schema
 import pydantic_core
 import rich.markup

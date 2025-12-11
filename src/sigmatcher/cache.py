@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeAlias
 
-if sys.version_info < (3, 11):
-    from typing_extensions import Self
-else:
+if sys.version_info >= (3, 11):
     from typing import Self
+else:
+    from typing_extensions import Self
 
 import platformdirs
 from pydantic import TypeAdapter

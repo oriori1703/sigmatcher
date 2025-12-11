@@ -13,10 +13,10 @@ from packaging.specifiers import SpecifierSet
 
 from sigmatcher.grep import rip_regex
 
-if sys.version_info < (3, 11):
-    from typing_extensions import Self
-else:
+if sys.version_info >= (3, 11):
     from typing import Self
+else:
+    from typing_extensions import Self
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -293,7 +293,7 @@ TDefinition = TypeVar("TDefinition", bound=Definition)
 
 
 def merge_definition(def1: TDefinition, def2: TDefinition) -> TDefinition:
-    signatures = def2.signatures if def2.signatures else def1.signatures
+    signatures = def2.signatures or def1.signatures
 
     if isinstance(def1, ClassDefinition):
         assert isinstance(def2, ClassDefinition)
