@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -184,8 +185,10 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
 
 
 def _get_apktool_version(apktool: str) -> str:
-    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True)
-    return proc.stdout.decode()
+    # APKTool in non-interactive mode will run the `pause` command after execution on Windows
+    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True, input=b"\n")
+    # Take only the first line, since the `pause` command prints output as well
+    return proc.stdout.decode().splitlines()[0]
 
 
 def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
@@ -197,20 +200,29 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
         only_manifest_flags = ["--only-manifest"]
     else:
         only_manifest_flags = ["--no-res", "--force-manifest"]
-    _ = subprocess.run(
-        [
-            apktool,
-            "decode",
-            apk,
-            *only_manifest_flags,
-            "--no-assets",
-            "-f",
-            "--output",
-            unpacked_path.with_suffix(".tmp"),
-        ],
-        check=True,
-        stdout=sys.stderr,
-    )
+
+    with tempfile.NamedTemporaryFile(delete_on_close=False) as temp_apk:
+        # On Windows, CreateProcess() implicitly spawns cmd.exe when executing batch files,
+        # even if the application didn't specify them in the command line.
+        # Since apktool on Windows is offered as a batch file, this can lead to command injection.
+        # Therefore we will run the command on a temporary file with a random name instead.
+        temp_apk.close()
+        _ = shutil.copy(apk, temp_apk.name)
+        _ = subprocess.run(
+            [
+                apktool,
+                "decode",
+                temp_apk.name,
+                *only_manifest_flags,
+                "--no-assets",
+                "-f",
+                "--output",
+                unpacked_path.with_suffix(".tmp"),
+            ],
+            check=True,
+            stdout=sys.stderr,
+            input=b"\n"# APKTool in non-interactive mode will run the `pause` command after execution on Windows
+        )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
 
