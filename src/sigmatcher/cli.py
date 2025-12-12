@@ -19,21 +19,19 @@ import rich.markup
 import typer
 import yaml
 from packaging import version
-from rich.console import Console, Group, RenderableType
+from rich.console import Group, RenderableType
 from rich.padding import Padding
 from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
+from sigmatcher.console_logging import stderr_console, stdout_console
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
 
 app = typer.Typer()
-
-stdout_console = Console()
-stderr_console = Console(stderr=True)
 
 cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
