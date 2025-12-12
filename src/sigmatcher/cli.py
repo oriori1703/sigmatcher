@@ -25,7 +25,7 @@ from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
-from sigmatcher.console_logging import stderr_console, stdout_console
+from sigmatcher.console_logging import progress, stderr_console, stdout_console
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
@@ -186,7 +186,7 @@ def _get_apktool_version(apktool: str) -> str:
     return proc.stdout.decode()
 
 
-def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
+def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
     unpacked_path = cache.get_apktool_cache_dir()
     if unpacked_path.exists():
         return
@@ -207,7 +207,7 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
             unpacked_path.with_suffix(".tmp"),
         ],
         check=True,
-        stdout=sys.stderr,
+        capture_output=suppress_output,
     )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
@@ -328,13 +328,22 @@ def analyze(  # noqa: PLR0913
             help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
         ),
     ] = DEFAULT_CACHE_DIR_PATH,
+    no_progress: Annotated[
+        bool, typer.Option(help="Disable progress bars indicating how much of the analysis has been completed.")
+    ] = False,
 ) -> dict[str, Result | SigmatcherError]:
     """
     Analyze an APK file using the provided signatures.
     """
-    merged_definitions = _read_definitions(signatures)
-    cache = Cache.get_from_apk(cache_dir, apk)
-    _unpack_apk(apktool, apk, cache)
+    if no_progress:
+        progress.quiet = True
+
+    with progress.status("Reading definitions..."):
+        merged_definitions = _read_definitions(signatures)
+    with progress.status("Getting APK hash..."):
+        cache = Cache.get_from_apk(cache_dir, apk)
+    with progress.status("Unpacking APK..."):
+        _unpack_apk(apktool, apk, cache, suppress_output=not debug)
 
     apk_version = _get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
@@ -342,7 +351,10 @@ def analyze(  # noqa: PLR0913
         apk_version = "0.0.0.0"
 
     results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
-    _output_results(results, output_file, output_format, tree_errors, debug)
+
+    with progress.status("Saving results..."):
+        _output_results(results, output_file, output_format, tree_errors, debug)
+
     return results
 
 

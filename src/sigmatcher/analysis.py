@@ -7,6 +7,10 @@ from collections.abc import Callable, Iterable, Sequence
 from functools import cache
 from pathlib import Path
 
+from rich.progress import track
+
+from sigmatcher.console_logging import progress
+
 if sys.version_info >= (3, 12):
     from typing import override
 else:
@@ -357,23 +361,27 @@ def analyze(
 
     excluded_results: list[str] = []
 
-    for analyzer_name in sorter.static_order():
-        analyzer = name_to_analyzer[analyzer_name]
-        try:
-            analyzer.check_dependencies(results)
+    analyzation_progress_tasks = track(
+        sequence=list(sorter.static_order()), console=progress, transient=True, description="Analyzing..."
+    )
+    for analyzer_name in analyzation_progress_tasks:
+        with progress.status(analyzer_name):
+            analyzer = name_to_analyzer[analyzer_name]
+            try:
+                analyzer.check_dependencies(results)
 
-            cache_key = analyzer.get_cache_key(results)
-            result = previous_results_cache.get(cache_key)
-            if result is None:
-                result = analyzer.analyze(results)
+                cache_key = analyzer.get_cache_key(results)
+                result = previous_results_cache.get(cache_key)
+                if result is None:
+                    result = analyzer.analyze(results)
 
-            results[analyzer_name] = result
-            new_results_cache[cache_key] = result
+                results[analyzer_name] = result
+                new_results_cache[cache_key] = result
 
-            if analyzer.definition.exclude:
-                excluded_results.append(analyzer_name)
-        except SigmatcherError as e:
-            results[analyzer_name] = e
+                if analyzer.definition.exclude:
+                    excluded_results.append(analyzer_name)
+            except SigmatcherError as e:
+                results[analyzer_name] = e
 
     cache.write_results_cache(new_results_cache)
 
