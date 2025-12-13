@@ -46,6 +46,20 @@ from sigmatcher.results import (
 )
 
 
+class ProgressObserver(ABC):
+    @abstractmethod
+    def on_start(self, total_analyzers: int) -> None:
+        """Called once when analysis begins."""
+
+    @abstractmethod
+    def on_analyzer_start(self, analyzer_name: str) -> None:
+        """Called immediately before analyzing each analyzer."""
+
+    @abstractmethod
+    def on_analyzer_complete(self, analyzer_name: str) -> None:
+        """Called immediately after each analyzer completes."""
+
+
 def filter_signature_matches(
     signatures: Iterable[Signature],
     initial_matches: Iterable[SignatureMatch],
@@ -340,7 +354,7 @@ def analyze(
     definitions: Sequence[ClassDefinition],
     cache: Cache,
     app_version: str | None,
-    progress_callback: Callable[[str, int], None] | None = None,
+    progress_observer: ProgressObserver | None = None,
 ) -> dict[str, Result | SigmatcherError]:
     results: dict[str, Result | SigmatcherError] = {}
     name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
@@ -359,13 +373,14 @@ def analyze(
     new_results_cache: ResultsCacheType = {}
 
     excluded_results: list[str] = []
-
     sorted_analyzers = list(sorter.static_order())
-    total_analyzers = len(sorted_analyzers)
+
+    if progress_observer is not None:
+        progress_observer.on_start(total_analyzers=len(sorted_analyzers))
 
     for analyzer_name in sorted_analyzers:
-        if progress_callback is not None:
-            progress_callback(analyzer_name, total_analyzers)
+        if progress_observer is not None:
+            progress_observer.on_analyzer_start(analyzer_name)
 
         analyzer = name_to_analyzer[analyzer_name]
         try:
@@ -383,6 +398,9 @@ def analyze(
                 excluded_results.append(analyzer_name)
         except SigmatcherError as e:
             results[analyzer_name] = e
+
+        if progress_observer is not None:
+            progress_observer.on_analyzer_complete(analyzer_name)
 
     cache.write_results_cache(new_results_cache)
 

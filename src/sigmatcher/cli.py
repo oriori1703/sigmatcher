@@ -21,7 +21,7 @@ import yaml
 from packaging import version
 from rich.console import Group, RenderableType
 from rich.padding import Padding
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
 from rich.tree import Tree
 
 import sigmatcher.analysis
@@ -300,6 +300,26 @@ def _output_results(
         _output_failed_results_flat(failed_results, debug)
 
 
+class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
+    def __init__(self, progress: Progress) -> None:
+        self.progress: Progress = progress
+        self.task_id: TaskID | None = None
+
+    @override
+    def on_start(self, total_analyzers: int) -> None:
+        self.task_id = self.progress.add_task("Starting analysis...", total=total_analyzers)
+
+    @override
+    def on_analyzer_start(self, analyzer_name: str) -> None:
+        if self.task_id is not None:
+            self.progress.update(self.task_id, description=f"Analyzing: {analyzer_name}")
+
+    @override
+    def on_analyzer_complete(self, analyzer_name: str) -> None:
+        if self.task_id is not None:
+            self.progress.update(self.task_id, advance=1)
+
+
 @app.command()
 def analyze(  # noqa: PLR0913
     apk: Annotated[
@@ -354,26 +374,15 @@ def analyze(  # noqa: PLR0913
     if no_progress:
         results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
     else:
-        analysis_progress = Progress(
+        with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn("[progress.percentage]{task.completed}/{task.total}"),
             TimeRemainingColumn(elapsed_when_finished=True),
             console=progress,
-        )
-
-        with analysis_progress:
-            task_id = analysis_progress.add_task("Analyzing... ")
-
-            def progress_callback(analyzer_name: str, total: int) -> None:
-                # Set total on first callback
-                if analysis_progress.tasks[task_id].total == 0:
-                    analysis_progress.update(task_id, total=total)
-
-                # Update progress with current analyzer
-                analysis_progress.update(task_id, description=f"Analyzing: {analyzer_name}", advance=1)
-
-            results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, progress_callback)
+        ) as analysis_progress:
+            observer = RichProgressObserver(analysis_progress)
+            results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
 
     with progress.status("Saving results..."):
         _output_results(results, output_file, output_format, tree_errors, debug)
