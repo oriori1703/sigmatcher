@@ -359,10 +359,8 @@ def analyze(  # noqa: PLR0913
     if no_progress:
         progress.quiet = True
 
-    with progress.status("Reading definitions..."):
-        merged_definitions = _read_definitions(signatures)
-    with progress.status("Getting APK hash..."):
-        cache = Cache.get_from_apk(cache_dir, apk)
+    merged_definitions = _read_definitions(signatures)
+    cache = Cache.get_from_apk(cache_dir, apk)
     with progress.status("Unpacking APK..."):
         _unpack_apk(apktool, apk, cache, suppress_output=not debug)
 
@@ -384,8 +382,7 @@ def analyze(  # noqa: PLR0913
             observer = RichProgressObserver(analysis_progress)
             results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
 
-    with progress.status("Saving results..."):
-        _output_results(results, output_file, output_format, tree_errors, debug)
+    _output_results(results, output_file, output_format, tree_errors, debug)
 
     return results
 
