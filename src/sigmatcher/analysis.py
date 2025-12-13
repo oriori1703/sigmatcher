@@ -336,11 +336,9 @@ def create_analyzers(
     return name_to_analyzer
 
 
-def analyze(
-    definitions: Sequence[ClassDefinition], cache: Cache, app_version: str | None
-) -> dict[str, Result | SigmatcherError]:
-    results: dict[str, Result | SigmatcherError] = {}
-    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
+def sort_analyzers(
+    name_to_analyzer: dict[str, Analyzer], results: dict[str, Result | SigmatcherError]
+) -> Iterable[str]:
     ananlyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
@@ -352,12 +350,22 @@ def analyze(
         else:
             sorter.add(analyzer.name, *dependencies)
 
+    return sorter.static_order()
+
+
+def analyze(
+    definitions: Sequence[ClassDefinition], cache: Cache, app_version: str | None
+) -> dict[str, Result | SigmatcherError]:
+    results: dict[str, Result | SigmatcherError] = {}
+    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
+    sorted_analyzers = sort_analyzers(name_to_analyzer, results)
+
     previous_results_cache = cache.get_results_cache()
     new_results_cache: ResultsCacheType = {}
 
     excluded_results: list[str] = []
 
-    for analyzer_name in sorter.static_order():
+    for analyzer_name in sorted_analyzers:
         analyzer = name_to_analyzer[analyzer_name]
         try:
             analyzer.check_dependencies(results)
