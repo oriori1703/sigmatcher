@@ -208,7 +208,7 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) ->
             unpacked_path.with_suffix(".tmp"),
         ],
         check=True,
-        capture_output=suppress_output,
+        stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
     )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
