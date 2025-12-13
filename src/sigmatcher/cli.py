@@ -21,6 +21,7 @@ import yaml
 from packaging import version
 from rich.console import Group, RenderableType
 from rich.padding import Padding
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 from rich.tree import Tree
 
 import sigmatcher.analysis
@@ -350,7 +351,29 @@ def analyze(  # noqa: PLR0913
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
-    results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
+    if no_progress:
+        results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
+    else:
+        analysis_progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn("[progress.percentage]{task.completed}/{task.total}"),
+            TimeRemainingColumn(elapsed_when_finished=True),
+            console=progress,
+        )
+
+        with analysis_progress:
+            task_id = analysis_progress.add_task("Analyzing... ")
+
+            def progress_callback(analyzer_name: str, total: int) -> None:
+                # Set total on first callback
+                if analysis_progress.tasks[task_id].total == 0:
+                    analysis_progress.update(task_id, total=total)
+
+                # Update progress with current analyzer
+                analysis_progress.update(task_id, description=f"Analyzing: {analyzer_name}", advance=1)
+
+            results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, progress_callback)
 
     with progress.status("Saving results..."):
         _output_results(results, output_file, output_format, tree_errors, debug)
