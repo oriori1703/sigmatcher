@@ -46,6 +46,20 @@ from sigmatcher.results import (
 )
 
 
+class ProgressObserver(ABC):
+    @abstractmethod
+    def on_start(self, total_analyzers: int) -> None:
+        """Called once when analysis begins."""
+
+    @abstractmethod
+    def on_analyzer_start(self, analyzer_name: str) -> None:
+        """Called immediately before analyzing each analyzer."""
+
+    @abstractmethod
+    def on_analyzer_complete(self, analyzer_name: str) -> None:
+        """Called immediately after each analyzer completes."""
+
+
 def filter_signature_matches(
     signatures: Iterable[Signature],
     initial_matches: Iterable[SignatureMatch],
@@ -336,11 +350,7 @@ def create_analyzers(
     return name_to_analyzer
 
 
-def analyze(
-    definitions: Sequence[ClassDefinition], cache: Cache, app_version: str | None
-) -> dict[str, Result | SigmatcherError]:
-    results: dict[str, Result | SigmatcherError] = {}
-    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
+def sort_analyzers(name_to_analyzer: dict[str, Analyzer], results: dict[str, Result | SigmatcherError]) -> list[str]:
     ananlyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
@@ -352,12 +362,31 @@ def analyze(
         else:
             sorter.add(analyzer.name, *dependencies)
 
+    return list(sorter.static_order())
+
+
+def analyze(
+    definitions: Sequence[ClassDefinition],
+    cache: Cache,
+    app_version: str | None,
+    progress_observer: ProgressObserver | None = None,
+) -> dict[str, Result | SigmatcherError]:
+    results: dict[str, Result | SigmatcherError] = {}
+    name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
+    sorted_analyzers = sort_analyzers(name_to_analyzer, results)
+
     previous_results_cache = cache.get_results_cache()
     new_results_cache: ResultsCacheType = {}
 
     excluded_results: list[str] = []
 
-    for analyzer_name in sorter.static_order():
+    if progress_observer is not None:
+        progress_observer.on_start(total_analyzers=len(sorted_analyzers))
+
+    for analyzer_name in sorted_analyzers:
+        if progress_observer is not None:
+            progress_observer.on_analyzer_start(analyzer_name)
+
         analyzer = name_to_analyzer[analyzer_name]
         try:
             analyzer.check_dependencies(results)
@@ -374,6 +403,9 @@ def analyze(
                 excluded_results.append(analyzer_name)
         except SigmatcherError as e:
             results[analyzer_name] = e
+
+        if progress_observer is not None:
+            progress_observer.on_analyzer_complete(analyzer_name)
 
     cache.write_results_cache(new_results_cache)
 
