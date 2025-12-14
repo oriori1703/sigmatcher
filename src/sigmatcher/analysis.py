@@ -67,7 +67,6 @@ def get_smali_files(search_root: Path) -> frozenset[Path]:
     return frozenset(search_root.rglob("*.smali"))
 
 
-@cache
 def resolve_macro(result: Result | SigmatcherError, macro_statement: MacroStatement, analyzer_name: str) -> str:
     assert not isinstance(result, Exception)
 
