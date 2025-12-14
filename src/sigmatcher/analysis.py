@@ -4,7 +4,7 @@ import hashlib
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 
 if sys.version_info >= (3, 12):
@@ -110,12 +110,16 @@ class Analyzer(ABC):
         if len(matches) > 1:
             raise TooManyMatchesError[SignatureMatch](self.name, signatures, matches)
 
-    def get_dependencies(self) -> set[str]:
+    def _get_dependencies(self) -> set[str]:
         return self.definition.get_dependencies(self.app_version)
+
+    @cached_property
+    def dependencies(self) -> set[str]:
+        return self._get_dependencies()
 
     def check_dependencies(self, results: dict[str, Result | SigmatcherError]) -> None:
         failed_dependencies: list[str] = []
-        for dependency_name in self.get_dependencies():
+        for dependency_name in self.dependencies:
             child_result = results[dependency_name]
             if isinstance(child_result, Exception):
                 failed_dependencies.append(dependency_name)
@@ -210,8 +214,8 @@ class FieldAnalyzer(Analyzer):
         return matched_field
 
     @override
-    def get_dependencies(self) -> set[str]:
-        return super().get_dependencies() | {self.parent.name}
+    def _get_dependencies(self) -> set[str]:
+        return super()._get_dependencies() | {self.parent.name}
 
     @property
     @override
@@ -257,8 +261,8 @@ class MethodAnalyzer(Analyzer):
         return matched_method
 
     @override
-    def get_dependencies(self) -> set[str]:
-        return super().get_dependencies() | {self.parent.name}
+    def _get_dependencies(self) -> set[str]:
+        return super()._get_dependencies() | {self.parent.name}
 
     @property
     @override
@@ -294,8 +298,8 @@ class ExportAnalyzer(Analyzer):
         return result
 
     @override
-    def get_dependencies(self) -> set[str]:
-        return super().get_dependencies() | {self.parent.name}
+    def _get_dependencies(self) -> set[str]:
+        return super()._get_dependencies() | {self.parent.name}
 
     @property
     @override
@@ -343,7 +347,7 @@ def sort_analyzers(
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
-        dependencies = analyzer.get_dependencies()
+        dependencies = analyzer.dependencies
         nonexistent_dependencies = dependencies.difference(ananlyzers_set)
         if nonexistent_dependencies:
             results[analyzer.name] = MissingDependenciesError(analyzer.name, list(nonexistent_dependencies))
