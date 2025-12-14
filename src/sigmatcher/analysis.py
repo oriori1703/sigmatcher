@@ -35,6 +35,7 @@ from sigmatcher.errors import (
     TooManySignaturesError,
 )
 from sigmatcher.results import (
+    RESULTS_TYPE_ADAPTER,
     Class,
     Field,
     MatchedClass,
@@ -134,8 +135,17 @@ class Analyzer(ABC):
         return self.definition.get_signatures_for_version(self.app_version)
 
     def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
-        signatures_hash = hashlib.sha256(SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results)))
-        return f"v1_{self.name}_{self.app_version}_{signatures_hash.hexdigest()}"
+        dependency_results: list[Result] = []
+        for dep in sorted(self.dependencies):
+            result = results[dep]
+            assert not isinstance(result, SigmatcherError)
+            dependency_results.append(result)
+
+        analyzer_content_hash = hashlib.sha256(
+            SIGNATURES_TYPE_ADAPTER.dump_json(self.get_signatures_for_version())
+            + RESULTS_TYPE_ADAPTER.dump_json(dependency_results)
+        )
+        return f"v2_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
