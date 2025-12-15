@@ -192,7 +192,7 @@ def _get_apktool_version(apktool: str) -> str:
     return proc.stdout.decode()
 
 
-def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
+def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
     unpacked_path = cache.get_apktool_cache_dir()
     if unpacked_path.exists():
         return
@@ -213,7 +213,7 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
             unpacked_path.with_suffix(".tmp"),
         ],
         check=True,
-        stdout=sys.stderr,
+        stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
     )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
@@ -367,7 +367,7 @@ def analyze(  # noqa: PLR0913
     merged_definitions = _read_definitions(signatures)
     cache = Cache.get_from_apk(cache_dir, apk)
     with progress_console.status("Unpacking APK..."):
-        _unpack_apk(apktool, apk, cache)
+        _unpack_apk(apktool, apk, cache, suppress_output=not debug)
 
     apk_version = _get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
