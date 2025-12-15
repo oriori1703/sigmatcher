@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +22,7 @@ import yaml
 from packaging import version
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
 from rich.tree import Tree
 
 import sigmatcher.analysis
@@ -30,10 +32,12 @@ from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
 
-app = typer.Typer()
-
 stdout_console = Console()
 stderr_console = Console(stderr=True)
+
+progress_console = Console()
+
+app = typer.Typer()
 
 cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
@@ -188,7 +192,7 @@ def _get_apktool_version(apktool: str) -> str:
     return proc.stdout.decode()
 
 
-def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
+def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
     unpacked_path = cache.get_apktool_cache_dir()
     if unpacked_path.exists():
         return
@@ -209,7 +213,7 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache) -> None:
             unpacked_path.with_suffix(".tmp"),
         ],
         check=True,
-        stdout=sys.stderr,
+        stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
     )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
@@ -301,6 +305,26 @@ def _output_results(
         _output_failed_results_flat(failed_results, debug)
 
 
+class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
+    def __init__(self, progress: Progress) -> None:
+        self.progress: Progress = progress
+        self.task_id: TaskID | None = None
+
+    @override
+    def on_start(self, total_analyzers: int) -> None:
+        self.task_id = self.progress.add_task("Starting analysis...", total=total_analyzers)
+
+    @override
+    def on_analyzer_start(self, analyzer_name: str) -> None:
+        if self.task_id is not None:
+            self.progress.update(self.task_id, description=f"Analyzing: {analyzer_name}")
+
+    @override
+    def on_analyzer_complete(self, analyzer_name: str) -> None:
+        if self.task_id is not None:
+            self.progress.update(self.task_id, advance=1)
+
+
 @app.command()
 def analyze(  # noqa: PLR0913
     apk: Annotated[
@@ -330,20 +354,42 @@ def analyze(  # noqa: PLR0913
             help="The dir used to cache the results. The default is ~/.cache/sigmatcher", envvar="SIGMATCHER_CACHE_DIR"
         ),
     ] = DEFAULT_CACHE_DIR_PATH,
+    no_progress: Annotated[
+        bool, typer.Option(help="Disable progress bars indicating how much of the analysis has been completed.")
+    ] = False,
 ) -> dict[str, Result | SigmatcherError]:
     """
     Analyze an APK file using the provided signatures.
     """
+    if no_progress:
+        progress_console.quiet = True
+
     merged_definitions = _read_definitions(signatures)
     cache = Cache.get_from_apk(cache_dir, apk)
-    _unpack_apk(apktool, apk, cache)
+    with progress_console.status("Unpacking APK..."):
+        _unpack_apk(apktool, apk, cache, suppress_output=not debug)
 
     apk_version = _get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
 
-    results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version)
+    if no_progress:
+        analysis_progress: nullcontext[None] | Progress = nullcontext()
+        observer = None
+    else:
+        analysis_progress = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn("[progress.percentage]{task.completed}/{task.total}"),
+            TimeRemainingColumn(elapsed_when_finished=True),
+            console=progress_console,
+        )
+        observer = RichProgressObserver(analysis_progress)
+
+    with analysis_progress:
+        results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
+
     _output_results(results, output_file, output_format, tree_errors, debug)
     return results
 
