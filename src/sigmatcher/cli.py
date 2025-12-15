@@ -188,8 +188,10 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
 
 
 def _get_apktool_version(apktool: str) -> str:
-    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True)
-    return proc.stdout.decode()
+    # APKTool in non-interactive mode will run the `pause` command after execution on Windows
+    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True, input=b"\n")
+    # Take only the first line, since the `pause` command prints output as well
+    return proc.stdout.decode().splitlines()[0]
 
 
 def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
@@ -201,6 +203,8 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) ->
         only_manifest_flags = ["--only-manifest"]
     else:
         only_manifest_flags = ["--no-res", "--force-manifest"]
+
+    # APKTool in non-interactive mode will run the `pause` command on Windows, so send a newline as input
     _ = subprocess.run(
         [
             apktool,
@@ -214,6 +218,7 @@ def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) ->
         ],
         check=True,
         stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
+        input=b"\n",
     )
     _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
 
