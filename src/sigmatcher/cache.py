@@ -26,7 +26,7 @@ class Cache:
     @classmethod
     def get_from_apk(cls, base_cache_dir: Path, apk: Path) -> Self:
         apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
-        return cls(base_cache_dir / f"v1_{apk_hash_hex}")
+        return cls(base_cache_dir / f"v2_{apk_hash_hex}")
 
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"
