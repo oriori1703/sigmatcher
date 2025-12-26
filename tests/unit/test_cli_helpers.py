@@ -1,7 +1,8 @@
 from pathlib import Path
 
-from sigmatcher.cli import _get_apk_version, _read_definitions  # pyright: ignore[reportPrivateUsage]
+from sigmatcher.cli import _read_definitions  # pyright: ignore[reportPrivateUsage]
 from sigmatcher.definitions import RegexSignature
+from sigmatcher.unpack import get_apk_version
 
 
 def test_get_apk_version_parses_string(tmp_path: Path) -> None:
@@ -9,7 +10,7 @@ def test_get_apk_version_parses_string(tmp_path: Path) -> None:
     unpacked.mkdir()
     _ = (unpacked / "apktool.yml").write_text("versionInfo:\n  versionName: 1.2.3\n")
 
-    assert _get_apk_version(unpacked) == "1.2.3"
+    assert get_apk_version(unpacked) == "1.2.3"
 
 
 def test_get_apk_version_casts_number_to_string(tmp_path: Path) -> None:
@@ -17,7 +18,7 @@ def test_get_apk_version_casts_number_to_string(tmp_path: Path) -> None:
     unpacked.mkdir()
     _ = (unpacked / "apktool.yml").write_text("versionInfo:\n  versionName: 12\n")
 
-    assert _get_apk_version(unpacked) == "12"
+    assert get_apk_version(unpacked) == "12"
 
 
 def test_read_definitions_merges_definition_groups(tmp_path: Path) -> None:
