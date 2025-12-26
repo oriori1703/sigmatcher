@@ -1,13 +1,10 @@
 import io
 import json
 import shutil
-import subprocess
 import sys
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Annotated
-
-from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -19,7 +16,6 @@ import pydantic_core
 import rich.markup
 import typer
 import yaml
-from packaging import version
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
@@ -27,10 +23,12 @@ from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
+from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
+from sigmatcher.unpack import get_apk_version, unpack_apk
 
 stdout_console = Console()
 stderr_console = Console(stderr=True)
@@ -187,53 +185,6 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
     return merge_definitions_groups(definition_groups)
 
 
-def _get_apktool_version(apktool: str) -> str:
-    # APKTool in non-interactive mode will run the `pause` command after execution on Windows
-    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True, input=b"\n")
-    # Take only the first line, since the `pause` command prints output as well
-    return proc.stdout.decode().splitlines()[0]
-
-
-def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
-    unpacked_path = cache.get_apktool_cache_dir()
-    if unpacked_path.exists():
-        return
-
-    if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
-        only_manifest_flags = ["--only-manifest"]
-    else:
-        only_manifest_flags = ["--no-res", "--force-manifest"]
-
-    # APKTool in non-interactive mode will run the `pause` command on Windows, so send a newline as input
-    _ = subprocess.run(
-        [
-            apktool,
-            "decode",
-            apk,
-            *only_manifest_flags,
-            "--no-assets",
-            "-f",
-            "--output",
-            unpacked_path.with_suffix(".tmp"),
-        ],
-        check=True,
-        stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
-        input=b"\n",
-    )
-    _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-
-
-def _get_apk_version(unpacked_path: Path) -> str | None:
-    apktool_yaml_file = unpacked_path / "apktool.yml"
-    with apktool_yaml_file.open() as f:
-        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]  # pyright: ignore[reportAny]
-
-    if isinstance(apk_version, float | int):
-        apk_version = str(apk_version)
-    assert isinstance(apk_version, str) or apk_version is None
-    return apk_version
-
-
 def _output_successful_results(
     results: dict[str, MatchedClass], output_file: Path | None, output_format: MappingFormat
 ) -> None:
@@ -372,9 +323,9 @@ def analyze(  # noqa: PLR0913
     merged_definitions = _read_definitions(signatures)
     cache = Cache.get_from_apk(cache_dir, apk)
     with progress_console.status("Unpacking APK..."):
-        _unpack_apk(apktool, apk, cache, suppress_output=not debug)
+        unpack_apk(apktool, apk, cache, suppress_output=not debug)
 
-    apk_version = _get_apk_version(cache.get_apktool_cache_dir())
+    apk_version = get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
