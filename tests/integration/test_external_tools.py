@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from sigmatcher.cli import _get_apktool_version  # pyright: ignore[reportPrivateUsage]
 from sigmatcher.grep import rip_regex
+from sigmatcher.unpack import get_apktool_version
 
 EXPECTED_HELLO_COUNT = 2
 
@@ -27,5 +27,5 @@ def test_apktool_version_command_runs_when_available() -> None:
     if shutil.which("apktool") is None:
         pytest.skip("apktool is not installed")
 
-    version = _get_apktool_version("apktool")
+    version = get_apktool_version("apktool")
     assert version
