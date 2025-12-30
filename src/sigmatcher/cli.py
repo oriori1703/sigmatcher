@@ -28,7 +28,7 @@ from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, me
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
-from sigmatcher.unpack import get_apk_version, unpack_apk
+from sigmatcher.unpack import get_apk_version, resolve_apk_inputs, unpack_apks
 
 stdout_console = Console()
 stderr_console = Console(stderr=True)
@@ -44,10 +44,10 @@ app.add_typer(cache_app, name="cache")
 @cache_app.command(name="info", hidden=True)
 @cache_app.command(name="dir")
 def get_dir(
-    apk: Annotated[
-        Path | None,
+    apks: Annotated[
+        list[Path] | None,
         typer.Argument(
-            help="Optionally, a path to an APK file. If omitted, prints info about the global cache.",
+            help="Path to an APK/XAPK/APKM file. If omitted, prints info about the global cache.",
             dir_okay=False,
             exists=True,
         ),
@@ -62,18 +62,18 @@ def get_dir(
     """
     Get the path to Sigmatcher's cache directory.
     """
-    if apk is None:
+    if not apks:
         print(str(cache_dir))
     else:
-        print(Cache.get_from_apk(cache_dir, apk).cache_dir)
+        print(Cache.get_from_inputs(cache_dir, apks).cache_dir)
 
 
 @cache_app.command()
 def clean(
-    apk: Annotated[
-        Path | None,
+    apks: Annotated[
+        list[Path] | None,
         typer.Argument(
-            help="Optionally, a path to a specific APK file to clean the cache for. If omitted, cleans everything.",
+            help="Path to an APK/XAPK/APKM file to clean the cache for. If omitted, cleans everything.",
             dir_okay=False,
             exists=True,
         ),
@@ -88,8 +88,8 @@ def clean(
     """
     Clean the cache directory.
     """
-    if apk is not None:
-        shutil.rmtree(Cache.get_from_apk(cache_dir, apk).cache_dir)
+    if apks:
+        shutil.rmtree(Cache.get_from_inputs(cache_dir, apks).cache_dir)
     else:
         for path in cache_dir.iterdir():
             shutil.rmtree(path)
@@ -283,8 +283,9 @@ class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
 
 @app.command()
 def analyze(  # noqa: PLR0913
-    apk: Annotated[
-        Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
+    apks: Annotated[
+        list[Path],
+        typer.Argument(help="Path to the APK/XAPK/APKM file to analyze", exists=True, file_okay=True, dir_okay=False),
     ],
     signatures: Annotated[
         list[Path],
@@ -316,14 +317,21 @@ def analyze(  # noqa: PLR0913
 ) -> dict[str, Result | SigmatcherError]:
     """
     Analyze an APK file using the provided signatures.
+
+    Supports single APK files, XAPK bundles (APKPure), APKM bundles (APKMirror),
+    and multiple APK files (split APKs) via the --apk option.
     """
+
     if no_progress:
         progress_console.quiet = True
 
     merged_definitions = _read_definitions(signatures)
-    cache = Cache.get_from_apk(cache_dir, apk)
-    with progress_console.status("Unpacking APK..."):
-        unpack_apk(apktool, apk, cache, suppress_output=not debug)
+
+    # Resolve APK inputs (handles XAPK/APKM extraction)
+    apk_source = resolve_apk_inputs(apks)
+    cache = Cache.get_from_inputs(cache_dir, apks)
+    with progress_console.status("Unpacking APK(s)..."):
+        unpack_apks(apktool, apk_source, cache, suppress_output=not debug)
 
     apk_version = get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
@@ -348,6 +356,8 @@ def analyze(  # noqa: PLR0913
 
     _output_results(results, output_file, output_format, tree_errors, debug)
     return results
+    # finally:
+    #     apk_source.cleanup()
 
 
 def main() -> None:
