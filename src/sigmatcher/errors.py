@@ -140,3 +140,15 @@ class InvalidMacroModifierError(SigmatcherError):
     @override
     def short_message(self) -> str:
         return "Invalid macro modifier"
+
+
+class DuplicateSmaliError(Exception):
+    """Raised when the same smali class has different content in multiple APKs."""
+
+    def __init__(self, relative_path: str, source1: Path, source2: Path) -> None:
+        self.relative_path = relative_path
+        self.source1 = source1
+        self.source2 = source2
+        super().__init__(
+            f"Duplicate smali file '{relative_path}' with different content found in '{source1}' and '{source2}'"
+        )

@@ -1,5 +1,6 @@
 import hashlib
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeAlias
@@ -27,6 +28,24 @@ class Cache:
     def get_from_apk(cls, base_cache_dir: Path, apk: Path) -> Self:
         apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
         return cls(base_cache_dir / f"v2_{apk_hash_hex}")
+
+    @classmethod
+    def get_from_inputs(cls, base_cache_dir: Path, inputs: Sequence[Path]) -> Self:
+        """
+        Create cache from input file(s).
+
+        For a single file: hash that file.
+        For multiple files: hash the sorted list of individual hashes.
+        """
+        if len(inputs) == 1:
+            input_hash = hashlib.sha256(inputs[0].read_bytes()).hexdigest()
+        else:
+            # Sort for deterministic ordering
+            sorted_inputs = sorted(inputs)
+            combined = b"".join(hashlib.sha256(p.read_bytes()).digest() for p in sorted_inputs)
+            input_hash = hashlib.sha256(combined).hexdigest()
+
+        return cls(base_cache_dir / f"v2_{input_hash}")
 
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"
