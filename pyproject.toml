@@ -120,7 +120,7 @@ extend-select = [
     "RUF",   # ruff
 ]
 
-extend-ignore = [
+ignore = [
     "SIM108", # if-else-block-instead-of-if-exp
     "ISC003", # explicit-string-concatenation
 ]
