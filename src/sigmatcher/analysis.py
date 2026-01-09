@@ -35,7 +35,6 @@ from sigmatcher.errors import (
     TooManySignaturesError,
 )
 from sigmatcher.results import (
-    RESULTS_TYPE_ADAPTER,
     Class,
     Field,
     MatchedClass,
@@ -81,9 +80,7 @@ def get_smali_files(search_root: Path) -> frozenset[Path]:
     return frozenset(search_root.rglob("*.smali"))
 
 
-def resolve_macro(result: Result | SigmatcherError, macro_statement: MacroStatement, analyzer_name: str) -> str:
-    assert not isinstance(result, Exception)
-
+def resolve_macro(result: Result, macro_statement: MacroStatement, analyzer_name: str) -> str:
     try:
         resolved_macro = getattr(result.new, macro_statement.modifier)  # pyright: ignore[reportAny]
     except AttributeError:
@@ -100,7 +97,9 @@ def resolve_signatures(
     for signature in signatures:
         resolved_signature = signature
         for macro_statement in signature.get_macro_definitions():
-            resolved_macro = resolve_macro(results[macro_statement.subject], macro_statement, analyzer_name)
+            result = results[macro_statement.subject]
+            assert not isinstance(result, Exception)
+            resolved_macro = resolve_macro(result, macro_statement, analyzer_name)
             resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
         resolved_signatures.append(resolved_signature)
 
@@ -147,18 +146,12 @@ class Analyzer(ABC):
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
 
-    def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
-        dependency_results: list[Result] = []
-        for dep in sorted(self.dependencies):
-            result = results[dep]
-            assert not isinstance(result, SigmatcherError)
-            dependency_results.append(result)
+    def _get_cache_content_to_hash(self, results: dict[str, Result | SigmatcherError]) -> bytes:
+        return SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results))
 
-        analyzer_content_hash = hashlib.sha256(
-            SIGNATURES_TYPE_ADAPTER.dump_json(self.get_signatures_for_version())
-            + RESULTS_TYPE_ADAPTER.dump_json(dependency_results)
-        )
-        return f"v2_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
+    def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
+        analyzer_content_hash = hashlib.sha256(self._get_cache_content_to_hash(results))
+        return f"v3_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
@@ -207,9 +200,22 @@ class ClassAnalyzer(Analyzer):
 
 
 @dataclasses.dataclass(frozen=True)
-class FieldAnalyzer(Analyzer):
-    definition: FieldDefinition
+class ChildAnalyzer(Analyzer, ABC):
     parent: ClassAnalyzer
+
+    @override
+    def _get_dependencies(self) -> set[str]:
+        return super()._get_dependencies() | {self.parent.name}
+
+    @override
+    def _get_cache_content_to_hash(self, results: dict[str, Result | SigmatcherError]) -> bytes:
+        parent_cache_key = self.parent.get_cache_key(results).encode()
+        return super()._get_cache_content_to_hash(results) + parent_cache_key
+
+
+@dataclasses.dataclass(frozen=True)
+class FieldAnalyzer(ChildAnalyzer):
+    definition: FieldDefinition
 
     @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedField:
@@ -236,10 +242,6 @@ class FieldAnalyzer(Analyzer):
         parent_class_result.matched_fields.append(matched_field)
         return matched_field
 
-    @override
-    def _get_dependencies(self) -> set[str]:
-        return super()._get_dependencies() | {self.parent.name}
-
     @property
     @override
     def name(self) -> str:
@@ -247,9 +249,8 @@ class FieldAnalyzer(Analyzer):
 
 
 @dataclasses.dataclass(frozen=True)
-class MethodAnalyzer(Analyzer):
+class MethodAnalyzer(ChildAnalyzer):
     definition: MethodDefinition
-    parent: ClassAnalyzer
 
     @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedMethod:
@@ -283,10 +284,6 @@ class MethodAnalyzer(Analyzer):
         parent_class_result.matched_methods.append(matched_method)
         return matched_method
 
-    @override
-    def _get_dependencies(self) -> set[str]:
-        return super()._get_dependencies() | {self.parent.name}
-
     @property
     @override
     def name(self) -> str:
@@ -294,9 +291,8 @@ class MethodAnalyzer(Analyzer):
 
 
 @dataclasses.dataclass(frozen=True)
-class ExportAnalyzer(Analyzer):
+class ExportAnalyzer(ChildAnalyzer):
     definition: ExportDefinition
-    parent: ClassAnalyzer
 
     @override
     def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedExport:
@@ -319,10 +315,6 @@ class ExportAnalyzer(Analyzer):
         result = MatchedExport.from_value(self.definition.name, export_value)
         parent_class_result.exports.append(result)
         return result
-
-    @override
-    def _get_dependencies(self) -> set[str]:
-        return super()._get_dependencies() | {self.parent.name}
 
     @property
     @override

@@ -112,4 +112,3 @@ class MatchedClass(pydantic.BaseModel):
 
 
 Result: TypeAlias = MatchedClass | MatchedField | MatchedMethod | MatchedExport
-RESULTS_TYPE_ADAPTER = pydantic.TypeAdapter(list[Result])
