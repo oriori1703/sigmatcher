@@ -49,7 +49,7 @@ Source = "https://github.com/oriori1703/sigmatcher"
 sigmatcher = "sigmatcher.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.8.13,<0.10.0"]
+requires = ["uv_build>=0.8.13,<0.11.0"]
 build-backend = "uv_build"
 
 
