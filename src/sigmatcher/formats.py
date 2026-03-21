@@ -5,15 +5,15 @@ from abc import ABC, abstractmethod
 from io import StringIO
 from typing import ClassVar, Literal
 
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
-
 import pydantic
 import pydantic.alias_generators
 
 from sigmatcher.results import Class, Field, MatchedClass, MatchedField, MatchedMethod, Method
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class Formatter(ABC):

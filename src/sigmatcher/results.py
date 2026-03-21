@@ -2,12 +2,12 @@ import sys
 from pathlib import Path
 from typing import TypeAlias
 
+import pydantic
+
 if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
-
-import pydantic
 
 
 class Export(pydantic.BaseModel, frozen=True):

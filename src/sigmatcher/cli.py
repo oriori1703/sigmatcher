@@ -7,13 +7,6 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Annotated
 
-from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
-
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
-
 import pydantic.json_schema
 import pydantic_core
 import rich.markup
@@ -27,10 +20,16 @@ from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
+from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import MatchedClass, Result
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 stdout_console = Console()
 stderr_console = Console(stderr=True)

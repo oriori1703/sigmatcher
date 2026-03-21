@@ -7,11 +7,6 @@ from collections.abc import Callable, Iterable, Sequence
 from functools import cache, cached_property
 from pathlib import Path
 
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
-
 from sigmatcher.cache import Cache, ResultsCacheType
 from sigmatcher.definitions import (
     SIGNATURES_TYPE_ADAPTER,
@@ -44,6 +39,11 @@ from sigmatcher.results import (
     Method,
     Result,
 )
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 
 class ProgressObserver(ABC):
