@@ -161,6 +161,9 @@ class Analyzer(ABC):
     def __repr__(self) -> str:
         return self.name
 
+    def from_cache(self, cached_result: Result) -> Result:
+        return cached_result
+
 
 @dataclasses.dataclass(frozen=True)
 class ClassAnalyzer(Analyzer):
@@ -196,6 +199,19 @@ class ClassAnalyzer(Analyzer):
         original_class = Class(name=self.definition.name, package=self.definition.package or new_class.package)
         return MatchedClass(
             original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[], exports=[]
+        )
+
+    @override
+    def from_cache(self, cached_result: Result) -> MatchedClass:
+        assert isinstance(cached_result, MatchedClass)
+        original_class = Class(name=self.definition.name, package=self.definition.package or cached_result.new.package)
+
+        return MatchedClass(
+            original=original_class,
+            new=cached_result.new,
+            matched_methods=[],
+            matched_fields=[],
+            exports=[],
         )
 
 
@@ -399,9 +415,11 @@ def analyze(
             analyzer.check_dependencies(results)
 
             cache_key = analyzer.get_cache_key(results)
-            result = previous_results_cache.get(cache_key)
-            if result is None:
+            cached_result = previous_results_cache.get(cache_key)
+            if cached_result is None:
                 result = analyzer.analyze(results)
+            else:
+                result = analyzer.from_cache(cached_result)
 
             results[analyzer_name] = result
             new_results_cache[cache_key] = result
