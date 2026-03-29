@@ -38,7 +38,7 @@ typing = ["types-PyYAML>=6.0.1,<7"]
 all = ["sigmatcher[typing]"]
 
 [dependency-groups]
-dev = ["ruff", "mypy"]
+dev = ["ruff", "mypy", "pytest>=8.0.0", "pytest-cov>=5.0.0"]
 
 [project.urls]
 Documentation = "https://github.com/oriori1703/sigmatcher#readme"
@@ -127,3 +127,11 @@ ignore = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not external'"
+markers = [
+    "integration: slower end-to-end tests",
+    "external: tests requiring external tools such as apktool/rg",
+]
