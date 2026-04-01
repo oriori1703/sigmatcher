@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sigmatcher.cli import _get_apk_version, _read_definitions
+from sigmatcher.cli import _get_apk_version, _read_definitions  # pyright: ignore[reportPrivateUsage]
 from sigmatcher.definitions import RegexSignature
 
 

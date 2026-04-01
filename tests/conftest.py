@@ -8,7 +8,7 @@ from sigmatcher.results import Class, Export, Field, MatchedClass, MatchedExport
 @pytest.fixture
 def sample_matched_class(tmp_path: Path) -> MatchedClass:
     smali_file = tmp_path / "NewSample.smali"
-    smali_file.write_text(".class public Lcom/example/NewSample;\n")
+    _ = smali_file.write_text(".class public Lcom/example/NewSample;\n")
 
     return MatchedClass(
         original=Class(name="OriginalSample", package="com.example.old"),

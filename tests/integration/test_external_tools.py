@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from sigmatcher.cli import _get_apktool_version
+from sigmatcher.cli import _get_apktool_version  # pyright: ignore[reportPrivateUsage]
 from sigmatcher.grep import rip_regex
 
 EXPECTED_HELLO_COUNT = 2
