@@ -55,16 +55,20 @@ def test_merge_definitions_groups_prefers_last_signatures_and_merges_children() 
     base = ClassDefinition(
         name="ConnectionManager",
         package="com.example",
+        # pyrefly: ignore [bad-argument-type]
         signatures=(RegexSignature(type="regex", signature=re.compile(r"old")),),
         methods=(
+            # pyrefly: ignore [bad-argument-type]
             MethodDefinition(name="read", signatures=(RegexSignature(type="regex", signature=re.compile(r"m1")),)),
         ),
     )
     override = ClassDefinition(
         name="ConnectionManager",
         package="com.example",
+        # pyrefly: ignore [bad-argument-type]
         signatures=(RegexSignature(type="regex", signature=re.compile(r"new")),),
         methods=(
+            # pyrefly: ignore [bad-argument-type]
             MethodDefinition(name="write", signatures=(RegexSignature(type="regex", signature=re.compile(r"m2")),)),
         ),
     )

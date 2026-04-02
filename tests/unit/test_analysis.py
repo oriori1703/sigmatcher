@@ -15,7 +15,9 @@ from sigmatcher.results import Class, MatchedClass, Result
 
 def test_filter_signature_matches_intersects_all_signatures() -> None:
     signatures = [
+        # pyrefly: ignore [bad-argument-type]
         RegexSignature(type="regex", signature=re.compile(r"first")),
+        # pyrefly: ignore [bad-argument-type]
         RegexSignature(type="regex", signature=re.compile(r"second")),
     ]
     initial = {"a", "b", "c"}
@@ -62,6 +64,7 @@ def test_resolve_macro_invalid_modifier_raises() -> None:
 
 
 def test_resolve_signatures_substitutes_macros() -> None:
+    # pyrefly: ignore [bad-argument-type]
     signatures = (RegexSignature(type="regex", signature=re.compile(r"new-instance v0, ${Target.java}")),)
     results: dict[str, Result | SigmatcherError] = {
         "Target": MatchedClass(
@@ -82,8 +85,10 @@ def test_resolve_signatures_substitutes_macros() -> None:
 def test_create_and_sort_analyzers_handles_missing_dependencies(tmp_path: Path) -> None:
     definition = ClassDefinition(
         name="Main",
+        # pyrefly: ignore [bad-argument-type]
         signatures=(RegexSignature(type="regex", signature=re.compile(r"invoke ${Missing.java}")),),
         methods=(
+            # pyrefly: ignore [bad-argument-type]
             MethodDefinition(name="run", signatures=(RegexSignature(type="regex", signature=re.compile(r"run")),)),
         ),
     )

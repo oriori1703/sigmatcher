@@ -63,22 +63,26 @@ def test_analyze_end_to_end_with_macros_and_children(tmp_path: Path, monkeypatch
         ClassDefinition(
             name="ConnectionManager",
             package="com.example.original",
+            # pyrefly: ignore [bad-argument-type]
             signatures=(RegexSignature(type="regex", signature=re.compile(r'const-string v0, "READ_OK"')),),
             methods=(
                 MethodDefinition(
                     name="read",
+                    # pyrefly: ignore [bad-argument-type]
                     signatures=(RegexSignature(type="regex", signature=re.compile(r'const-string v0, "READ_OK"')),),
                 ),
             ),
             fields=(
                 FieldDefinition(
                     name="counter",
+                    # pyrefly: ignore [bad-argument-type]
                     signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>b:I)")),),
                 ),
             ),
             exports=(
                 ExportDefinition(
                     name="readConst",
+                    # pyrefly: ignore [bad-argument-type]
                     signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>READ_OK)")),),
                 ),
             ),
@@ -86,6 +90,7 @@ def test_analyze_end_to_end_with_macros_and_children(tmp_path: Path, monkeypatch
         ClassDefinition(
             name="NetworkHandler",
             signatures=(
+                # pyrefly: ignore [bad-argument-type]
                 RegexSignature(type="regex", signature=re.compile(r"new-instance v0, ${ConnectionManager.java}")),
             ),
         ),
