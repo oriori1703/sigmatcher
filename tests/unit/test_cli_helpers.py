@@ -21,6 +21,16 @@ def test_get_apk_version_casts_number_to_string(tmp_path: Path) -> None:
     assert get_apk_version(unpacked) == "12"
 
 
+def test_get_apk_version_uses_base_part_when_bundle_layout_exists(tmp_path: Path) -> None:
+    unpacked = tmp_path / "apktool"
+    (unpacked / "parts" / "feature").mkdir(parents=True)
+    (unpacked / "parts" / "base").mkdir(parents=True)
+    _ = (unpacked / "parts" / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
+    _ = (unpacked / "parts" / "base" / "apktool.yml").write_text("versionInfo:\n  versionName: 2.0.0\n")
+
+    assert get_apk_version(unpacked) == "2.0.0"
+
+
 def test_read_definitions_merges_definition_groups(tmp_path: Path) -> None:
     base = tmp_path / "base.yaml"
     override = tmp_path / "override.yaml"
