@@ -3,7 +3,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 from packaging import version
@@ -48,6 +48,17 @@ def _resolve_bundle_output_dir_name(part_name: str) -> str:
     return "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in raw_name) or "part"
 
 
+def _resolve_safe_archive_member_path(extraction_root: Path, member: str) -> Path:
+    member_path = PurePosixPath(member.replace("\\", "/"))
+
+    extracted_path = extraction_root / member_path
+    resolved_extracted_path = extracted_path.resolve()
+    if not resolved_extracted_path.is_relative_to(extraction_root.resolve()):
+        raise ValueError(f"Unsafe archive member path: {member!s}")
+
+    return resolved_extracted_path
+
+
 def _decode_bundle_parts(
     apktool: str,
     parts: tuple[tuple[str, Path], ...],
@@ -86,7 +97,7 @@ def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: b
             with zipfile.ZipFile(app_input) as archive_file:
                 archive_parts: list[tuple[str, Path]] = []
                 for member in archive_members:
-                    extracted_path = extraction_root / Path(member)
+                    extracted_path = _resolve_safe_archive_member_path(extraction_root, member)
                     extracted_path.parent.mkdir(parents=True, exist_ok=True)
                     with archive_file.open(member) as source:
                         _ = extracted_path.write_bytes(source.read())
