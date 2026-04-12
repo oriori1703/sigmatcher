@@ -106,6 +106,78 @@ def test_unpack_input_decodes_archive_parts(monkeypatch: MonkeyPatch, tmp_path: 
     assert {path.name for path in decoded_inputs} == {"base.apk", "config.en.apk"}
 
 
+def test_unpack_input_disambiguates_colliding_output_part_names(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    archive_path = tmp_path / "bundle.xapk"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("a/b.apk", b"one")
+        archive.writestr("a_b.apk", b"two")
+
+    cache = Cache(tmp_path / "cache")
+    decode_outputs: list[Path] = []
+
+    def fake_get_apktool_version(_apktool: str) -> str:
+        return "2.12.0"
+
+    def fake_run(args: list[str | Path], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        output_flag_index = args.index("--output")
+        output_path = Path(args[output_flag_index + 1])
+        decode_outputs.append(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        _ = (output_path / "apktool.yml").write_text("versionInfo:\n  versionName: 1.0.0\n")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("sigmatcher.unpack.get_apktool_version", fake_get_apktool_version)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    unpack_input("apktool", archive_path, cache, suppress_output=True)
+
+    assert len(decode_outputs) == EXPECTED_PARTS_COUNT
+    output_names = {path.name for path in decode_outputs}
+    assert "a_b" in output_names
+    assert "a%2Fb" in output_names
+
+
+def test_unpack_input_rejects_archive_path_traversal(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    archive_path = tmp_path / "bundle.apkm"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("../evil.apk", b"evil")
+
+    cache = Cache(tmp_path / "cache")
+
+    def fail_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise AssertionError("subprocess.run should not be called for unsafe archive entries")
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+
+    try:
+        unpack_input("apktool", archive_path, cache, suppress_output=True)
+        raise AssertionError("Expected ValueError")
+    except ValueError as e:
+        assert "Unsafe archive member path" in str(e)
+
+
+def test_unpack_input_rejects_duplicate_normalized_archive_member_path(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    archive_path = tmp_path / "bundle.apkm"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("a/../base.apk", b"one")
+        archive.writestr("base.apk", b"two")
+
+    cache = Cache(tmp_path / "cache")
+
+    def fail_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise AssertionError("subprocess.run should not be called for duplicate normalized archive members")
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+
+    try:
+        unpack_input("apktool", archive_path, cache, suppress_output=True)
+        raise AssertionError("Expected ValueError")
+    except ValueError as e:
+        assert "Duplicate archive member path after normalization" in str(e)
+
+
 def test_get_apk_version_prefers_base_part(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
     (unpacked_path / "parts" / "feature").mkdir(parents=True)
