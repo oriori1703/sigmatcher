@@ -4,6 +4,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 import yaml
 from packaging import version
@@ -44,8 +45,8 @@ def _decode_apk(apktool: str, apk: Path, output: Path, suppress_output: bool) ->
 
 
 def _resolve_bundle_output_dir_name(part_name: str) -> str:
-    raw_name = Path(part_name).with_suffix("").as_posix()
-    return "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in raw_name) or "part"
+    raw_name = PurePosixPath(part_name.replace("\\", "/")).with_suffix("").as_posix()
+    return quote(raw_name, safe="-_.")
 
 
 def _resolve_safe_archive_member_path(extraction_root: Path, member: str) -> Path:
@@ -69,6 +70,8 @@ def _decode_bundle_parts(
     parts_root.mkdir(parents=True, exist_ok=True)
     for part_name, apk_part in parts:
         part_output = parts_root / _resolve_bundle_output_dir_name(part_name)
+        if part_output.exists():
+            raise ValueError(f"Duplicate bundle part output directory: {part_output.name!s}")
         _decode_apk(apktool, apk_part, part_output, suppress_output)
 
 
@@ -98,6 +101,8 @@ def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: b
                 archive_parts: list[tuple[str, Path]] = []
                 for member in archive_members:
                     extracted_path = _resolve_safe_archive_member_path(extraction_root, member)
+                    if extracted_path.exists():
+                        raise ValueError(f"Duplicate archive member path after normalization: {member!s}")
                     extracted_path.parent.mkdir(parents=True, exist_ok=True)
                     with archive_file.open(member) as source:
                         _ = extracted_path.write_bytes(source.read())
