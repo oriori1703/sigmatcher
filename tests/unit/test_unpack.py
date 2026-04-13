@@ -137,6 +137,34 @@ def test_unpack_input_disambiguates_colliding_output_part_names(monkeypatch: Mon
     assert "a%2Fb" in output_names
 
 
+def test_unpack_input_decodes_single_apk_into_parts_directory(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    apk_path = tmp_path / "app.apk"
+    _ = apk_path.write_bytes(b"app")
+
+    cache = Cache(tmp_path / "cache")
+    decode_outputs: list[Path] = []
+
+    def fake_get_apktool_version(_apktool: str) -> str:
+        return "2.12.0"
+
+    def fake_run(args: list[str | Path], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        output_flag_index = args.index("--output")
+        output_path = Path(args[output_flag_index + 1])
+        decode_outputs.append(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        _ = (output_path / "apktool.yml").write_text("versionInfo:\n  versionName: 1.0.0\n")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("sigmatcher.unpack.get_apktool_version", fake_get_apktool_version)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    unpack_input("apktool", apk_path, cache, suppress_output=True)
+
+    assert len(decode_outputs) == 1
+    expected_output_root = cache.get_apktool_cache_dir().with_suffix(".tmp")
+    assert decode_outputs[0] == expected_output_root / "parts" / "app"
+
+
 def test_unpack_input_rejects_archive_path_traversal(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     archive_path = tmp_path / "bundle.apkm"
     with zipfile.ZipFile(archive_path, "w") as archive:

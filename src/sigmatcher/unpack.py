@@ -3,6 +3,9 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -11,6 +14,11 @@ from packaging import version
 
 from sigmatcher.cache import Cache
 from sigmatcher.input_paths import InputKind, get_input_kind, list_archive_apk_members, list_directory_apk_files
+
+if sys.version_info >= (3, 11):
+    from typing import assert_never
+else:
+    from typing_extensions import assert_never
 
 
 def get_apktool_version(apktool: str) -> str:
@@ -44,7 +52,7 @@ def _decode_apk(apktool: str, apk: Path, output: Path, suppress_output: bool) ->
     )
 
 
-def _resolve_bundle_output_dir_name(part_name: str) -> str:
+def _resolve_apk_part_output_dir_name(part_name: str) -> str:
     raw_name = PurePosixPath(part_name.replace("\\", "/")).with_suffix("").as_posix()
     return quote(raw_name, safe="-_.")
 
@@ -60,7 +68,36 @@ def _resolve_safe_archive_member_path(extraction_root: Path, member: str) -> Pat
     return resolved_extracted_path
 
 
-def _decode_bundle_parts(
+@contextmanager
+def _resolve_input_apk_parts(app_input: Path, input_kind: InputKind) -> Iterator[tuple[tuple[str, Path], ...]]:
+    match input_kind:
+        case InputKind.APK:
+            yield ((app_input.name, app_input),)
+        case InputKind.DIRECTORY:
+            directory_parts = tuple(
+                (part.relative_to(app_input).as_posix(), part) for part in list_directory_apk_files(app_input)
+            )
+            yield directory_parts
+        case InputKind.ARCHIVE:
+            archive_members = list_archive_apk_members(app_input)
+            with tempfile.TemporaryDirectory(prefix="sigmatcher-bundle-") as raw_tmp_dir:
+                extraction_root = Path(raw_tmp_dir)
+                with zipfile.ZipFile(app_input) as archive_file:
+                    archive_parts: list[tuple[str, Path]] = []
+                    for member in archive_members:
+                        extracted_path = _resolve_safe_archive_member_path(extraction_root, member)
+                        if extracted_path.exists():
+                            raise ValueError(f"Duplicate archive member path after normalization: {member!s}")
+                        extracted_path.parent.mkdir(parents=True, exist_ok=True)
+                        with archive_file.open(member) as source:
+                            _ = extracted_path.write_bytes(source.read())
+                        archive_parts.append((member, extracted_path))
+                yield tuple(archive_parts)
+        case _:
+            assert_never(input_kind)
+
+
+def _decode_apk_parts(
     apktool: str,
     parts: tuple[tuple[str, Path], ...],
     unpacked_tmp_path: Path,
@@ -68,11 +105,16 @@ def _decode_bundle_parts(
 ) -> None:
     parts_root = unpacked_tmp_path / "parts"
     parts_root.mkdir(parents=True, exist_ok=True)
-    for part_name, apk_part in parts:
-        part_output = parts_root / _resolve_bundle_output_dir_name(part_name)
-        if part_output.exists():
-            raise ValueError(f"Duplicate bundle part output directory: {part_output.name!s}")
-        _decode_apk(apktool, apk_part, part_output, suppress_output)
+
+    output_dir_names = tuple(_resolve_apk_part_output_dir_name(part_name) for part_name, _ in parts)
+    output_dir_name_counts = Counter(output_dir_names)
+    duplicate_output_dir_names = [name for name, count in output_dir_name_counts.items() if count > 1]
+    if duplicate_output_dir_names:
+        duplicate_names = ", ".join(sorted(duplicate_output_dir_names))
+        raise ValueError(f"Duplicate bundle part output directory after normalization: {duplicate_names}")
+
+    for (_, apk_part), output_dir_name in zip(parts, output_dir_names, strict=True):
+        _decode_apk(apktool, apk_part, parts_root / output_dir_name, suppress_output)
 
 
 def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: bool) -> None:
@@ -86,28 +128,8 @@ def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: b
 
     input_kind = get_input_kind(app_input)
 
-    if input_kind is InputKind.APK:
-        _decode_apk(apktool, app_input, unpacked_tmp_path, suppress_output)
-    elif input_kind is InputKind.DIRECTORY:
-        directory_parts = tuple(
-            (part.relative_to(app_input).as_posix(), part) for part in list_directory_apk_files(app_input)
-        )
-        _decode_bundle_parts(apktool, directory_parts, unpacked_tmp_path, suppress_output)
-    else:
-        archive_members = list_archive_apk_members(app_input)
-        with tempfile.TemporaryDirectory(prefix="sigmatcher-bundle-") as raw_tmp_dir:
-            extraction_root = Path(raw_tmp_dir)
-            with zipfile.ZipFile(app_input) as archive_file:
-                archive_parts: list[tuple[str, Path]] = []
-                for member in archive_members:
-                    extracted_path = _resolve_safe_archive_member_path(extraction_root, member)
-                    if extracted_path.exists():
-                        raise ValueError(f"Duplicate archive member path after normalization: {member!s}")
-                    extracted_path.parent.mkdir(parents=True, exist_ok=True)
-                    with archive_file.open(member) as source:
-                        _ = extracted_path.write_bytes(source.read())
-                    archive_parts.append((member, extracted_path))
-            _decode_bundle_parts(apktool, tuple(archive_parts), unpacked_tmp_path, suppress_output)
+    with _resolve_input_apk_parts(app_input, input_kind) as apk_parts:
+        _decode_apk_parts(apktool, apk_parts, unpacked_tmp_path, suppress_output)
 
     _ = shutil.move(unpacked_tmp_path, unpacked_path)
 
