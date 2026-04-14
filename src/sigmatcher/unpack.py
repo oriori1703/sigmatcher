@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import yaml
 from packaging import version
@@ -55,6 +55,15 @@ def _decode_apk(apktool: str, apk: Path, output: Path, suppress_output: bool) ->
 def _resolve_apk_part_output_dir_name(part_name: str) -> str:
     raw_name = PurePosixPath(part_name.replace("\\", "/")).with_suffix("").as_posix()
     return quote(raw_name, safe="-_.")
+
+
+def _decode_apk_part_output_dir_name(output_dir_name: str) -> str:
+    return unquote(output_dir_name)
+
+
+def _is_base_apk_part(part_name: str) -> bool:
+    normalized_part_name = PurePosixPath(part_name.replace("\\", "/")).name.casefold()
+    return normalized_part_name.startswith("base") or "_base" in normalized_part_name
 
 
 def _resolve_safe_archive_member_path(extraction_root: Path, member: str) -> Path:
@@ -152,18 +161,14 @@ def _get_apk_version_from_yaml(apktool_yaml_file: Path) -> str | None:
 
 
 def get_apk_version(unpacked_path: Path) -> str | None:
-    root_apktool_yaml_file = unpacked_path / "apktool.yml"
-    if root_apktool_yaml_file.exists():
-        return _get_apk_version_from_yaml(root_apktool_yaml_file)
-
-    apktool_yaml_files = sorted(unpacked_path.rglob("apktool.yml"), key=lambda path: path.as_posix())
+    apktool_yaml_files = sorted(unpacked_path.glob("parts/*/apktool.yml"), key=lambda path: path.as_posix())
 
     preferred_apktool_yaml_files: list[Path] = []
     non_preferred_apktool_yaml_files: list[Path] = []
 
     for apktool_yaml_file in apktool_yaml_files:
-        part_name = apktool_yaml_file.parent.name.casefold()
-        if part_name.startswith("base") or "_base" in part_name:
+        part_name = _decode_apk_part_output_dir_name(apktool_yaml_file.parent.name)
+        if _is_base_apk_part(part_name):
             preferred_apktool_yaml_files.append(apktool_yaml_file)
         else:
             non_preferred_apktool_yaml_files.append(apktool_yaml_file)

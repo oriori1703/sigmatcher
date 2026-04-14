@@ -216,6 +216,16 @@ def test_get_apk_version_prefers_base_part(tmp_path: Path) -> None:
     assert get_apk_version(unpacked_path) == "1.2.3"
 
 
+def test_get_apk_version_prefers_nested_base_part_after_output_name_normalization(tmp_path: Path) -> None:
+    unpacked_path = tmp_path / "apktool"
+    (unpacked_path / "parts" / "x%2Fbase").mkdir(parents=True)
+    (unpacked_path / "parts" / "a%2Ffeature").mkdir(parents=True)
+    _ = (unpacked_path / "parts" / "x%2Fbase" / "apktool.yml").write_text("versionInfo:\n  versionName: 2.0.0\n")
+    _ = (unpacked_path / "parts" / "a%2Ffeature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
+
+    assert get_apk_version(unpacked_path) == "2.0.0"
+
+
 def test_get_apk_version_returns_first_available_for_bundle(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
     (unpacked_path / "parts" / "feature").mkdir(parents=True)
