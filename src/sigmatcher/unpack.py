@@ -4,8 +4,9 @@ import sys
 import tempfile
 import zipfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
+from functools import cache
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote
 
@@ -21,11 +22,50 @@ else:
     from typing_extensions import assert_never
 
 
+@cache
 def get_apktool_version(apktool: str) -> str:
     # APKTool in non-interactive mode will run the `pause` command after execution on Windows
     proc = subprocess.run([apktool, "--version"], check=True, capture_output=True, input=b"\n")
     # Take only the first line, since the `pause` command prints output as well
     return proc.stdout.decode().splitlines()[0]
+
+
+def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: bool) -> None:
+    unpacked_path = cache.get_apktool_cache_dir()
+    if unpacked_path.exists():
+        return
+
+    unpacked_tmp_path = unpacked_path.with_suffix(".tmp")
+    if unpacked_tmp_path.exists():
+        shutil.rmtree(unpacked_tmp_path)
+
+    input_kind = get_input_kind(app_input)
+
+    with _collect_input_apk_parts(app_input, input_kind) as apk_parts:
+        _decode_apk_parts_into_root(apktool, apk_parts, unpacked_tmp_path, suppress_output)
+
+    _ = shutil.move(unpacked_tmp_path, unpacked_path)
+
+
+def get_apk_version(unpacked_path: Path) -> str | None:
+    apktool_yaml_files = sorted(unpacked_path.glob("*/apktool.yml"), key=lambda path: path.as_posix())
+
+    preferred_apktool_yaml_files: list[Path] = []
+    non_preferred_apktool_yaml_files: list[Path] = []
+
+    for apktool_yaml_file in apktool_yaml_files:
+        part_name = _decode_apk_part_dir_name(apktool_yaml_file.parent.name)
+        if _is_base_apk_part(part_name):
+            preferred_apktool_yaml_files.append(apktool_yaml_file)
+        else:
+            non_preferred_apktool_yaml_files.append(apktool_yaml_file)
+
+    for apktool_yaml_file in [*preferred_apktool_yaml_files, *non_preferred_apktool_yaml_files]:
+        apk_version = _get_apk_version_from_yaml(apktool_yaml_file)
+        if apk_version is not None:
+            return apk_version
+
+    return None
 
 
 def _decode_apk(apktool: str, apk: Path, output: Path, suppress_output: bool) -> None:
@@ -52,12 +92,12 @@ def _decode_apk(apktool: str, apk: Path, output: Path, suppress_output: bool) ->
     )
 
 
-def _resolve_apk_part_output_dir_name(part_name: str) -> str:
+def _encode_apk_part_dir_name(part_name: str) -> str:
     raw_name = PurePosixPath(part_name.replace("\\", "/")).with_suffix("").as_posix()
     return quote(raw_name, safe="-_.")
 
 
-def _decode_apk_part_output_dir_name(output_dir_name: str) -> str:
+def _decode_apk_part_dir_name(output_dir_name: str) -> str:
     return unquote(output_dir_name)
 
 
@@ -78,7 +118,9 @@ def _resolve_safe_archive_member_path(extraction_root: Path, member: str) -> Pat
 
 
 @contextmanager
-def _resolve_input_apk_parts(app_input: Path, input_kind: InputKind) -> Iterator[tuple[tuple[str, Path], ...]]:
+def _collect_input_apk_parts(
+    app_input: Path, input_kind: InputKind
+) -> Generator[tuple[tuple[str, Path], ...], None, None]:
     match input_kind:
         case InputKind.APK:
             yield ((app_input.name, app_input),)
@@ -106,7 +148,7 @@ def _resolve_input_apk_parts(app_input: Path, input_kind: InputKind) -> Iterator
             assert_never(input_kind)
 
 
-def _decode_apk_parts(
+def _decode_apk_parts_into_root(
     apktool: str,
     parts: tuple[tuple[str, Path], ...],
     unpacked_tmp_path: Path,
@@ -114,7 +156,7 @@ def _decode_apk_parts(
 ) -> None:
     unpacked_tmp_path.mkdir(parents=True, exist_ok=True)
 
-    output_dir_names = tuple(_resolve_apk_part_output_dir_name(part_name) for part_name, _ in parts)
+    output_dir_names = tuple(_encode_apk_part_dir_name(part_name) for part_name, _ in parts)
     output_dir_name_counts = Counter(output_dir_names)
     duplicate_output_dir_names = [name for name, count in output_dir_name_counts.items() if count > 1]
     if duplicate_output_dir_names:
@@ -123,27 +165,6 @@ def _decode_apk_parts(
 
     for (_, apk_part), output_dir_name in zip(parts, output_dir_names, strict=True):
         _decode_apk(apktool, apk_part, unpacked_tmp_path / output_dir_name, suppress_output)
-
-
-def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: bool) -> None:
-    unpacked_path = cache.get_apktool_cache_dir()
-    if unpacked_path.exists():
-        return
-
-    unpacked_tmp_path = unpacked_path.with_suffix(".tmp")
-    if unpacked_tmp_path.exists():
-        shutil.rmtree(unpacked_tmp_path)
-
-    input_kind = get_input_kind(app_input)
-
-    with _resolve_input_apk_parts(app_input, input_kind) as apk_parts:
-        _decode_apk_parts(apktool, apk_parts, unpacked_tmp_path, suppress_output)
-
-    _ = shutil.move(unpacked_tmp_path, unpacked_path)
-
-
-def unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
-    unpack_input(apktool, apk, cache, suppress_output)
 
 
 def _get_apk_version_from_yaml(apktool_yaml_file: Path) -> str | None:
@@ -157,24 +178,3 @@ def _get_apk_version_from_yaml(apktool_yaml_file: Path) -> str | None:
         apk_version = str(apk_version)
     assert isinstance(apk_version, str) or apk_version is None
     return apk_version
-
-
-def get_apk_version(unpacked_path: Path) -> str | None:
-    apktool_yaml_files = sorted(unpacked_path.glob("*/apktool.yml"), key=lambda path: path.as_posix())
-
-    preferred_apktool_yaml_files: list[Path] = []
-    non_preferred_apktool_yaml_files: list[Path] = []
-
-    for apktool_yaml_file in apktool_yaml_files:
-        part_name = _decode_apk_part_output_dir_name(apktool_yaml_file.parent.name)
-        if _is_base_apk_part(part_name):
-            preferred_apktool_yaml_files.append(apktool_yaml_file)
-        else:
-            non_preferred_apktool_yaml_files.append(apktool_yaml_file)
-
-    for apktool_yaml_file in [*preferred_apktool_yaml_files, *non_preferred_apktool_yaml_files]:
-        apk_version = _get_apk_version_from_yaml(apktool_yaml_file)
-        if apk_version is not None:
-            return apk_version
-
-    return None

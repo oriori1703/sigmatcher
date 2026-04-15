@@ -216,6 +216,22 @@ def test_get_apk_version_prefers_base_part(tmp_path: Path) -> None:
     assert get_apk_version(unpacked_path) == "1.2.3"
 
 
+def test_get_apk_version_parses_string(tmp_path: Path) -> None:
+    unpacked = tmp_path / "apktool"
+    (unpacked / "app").mkdir(parents=True)
+    _ = (unpacked / "app" / "apktool.yml").write_text("versionInfo:\n  versionName: 1.2.3\n")
+
+    assert get_apk_version(unpacked) == "1.2.3"
+
+
+def test_get_apk_version_casts_number_to_string(tmp_path: Path) -> None:
+    unpacked = tmp_path / "apktool"
+    (unpacked / "app").mkdir(parents=True)
+    _ = (unpacked / "app" / "apktool.yml").write_text("versionInfo:\n  versionName: 12\n")
+
+    assert get_apk_version(unpacked) == "12"
+
+
 def test_get_apk_version_prefers_nested_base_part_after_output_name_normalization(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
     (unpacked_path / "x%2Fbase").mkdir(parents=True)

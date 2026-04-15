@@ -2,33 +2,6 @@ from pathlib import Path
 
 from sigmatcher.cli import _read_definitions  # pyright: ignore[reportPrivateUsage]
 from sigmatcher.definitions import RegexSignature
-from sigmatcher.unpack import get_apk_version
-
-
-def test_get_apk_version_parses_string(tmp_path: Path) -> None:
-    unpacked = tmp_path / "apktool"
-    (unpacked / "app").mkdir(parents=True)
-    _ = (unpacked / "app" / "apktool.yml").write_text("versionInfo:\n  versionName: 1.2.3\n")
-
-    assert get_apk_version(unpacked) == "1.2.3"
-
-
-def test_get_apk_version_casts_number_to_string(tmp_path: Path) -> None:
-    unpacked = tmp_path / "apktool"
-    (unpacked / "app").mkdir(parents=True)
-    _ = (unpacked / "app" / "apktool.yml").write_text("versionInfo:\n  versionName: 12\n")
-
-    assert get_apk_version(unpacked) == "12"
-
-
-def test_get_apk_version_uses_base_part_when_bundle_layout_exists(tmp_path: Path) -> None:
-    unpacked = tmp_path / "apktool"
-    (unpacked / "feature").mkdir(parents=True)
-    (unpacked / "base").mkdir(parents=True)
-    _ = (unpacked / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
-    _ = (unpacked / "base" / "apktool.yml").write_text("versionInfo:\n  versionName: 2.0.0\n")
-
-    assert get_apk_version(unpacked) == "2.0.0"
 
 
 def test_read_definitions_merges_definition_groups(tmp_path: Path) -> None:
