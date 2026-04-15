@@ -102,7 +102,7 @@ def _decode_apk_part_dir_name(output_dir_name: str) -> str:
 
 
 def _is_base_apk_part(part_name: str) -> bool:
-    normalized_part_name = PurePosixPath(part_name.replace("\\", "/")).name.casefold()
+    normalized_part_name = PurePosixPath(part_name.replace("\\", "/")).name
     return normalized_part_name.startswith("base") or "_base" in normalized_part_name
 
 

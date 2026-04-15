@@ -26,7 +26,7 @@ def get_input_kind(app_input: Path) -> InputKind:
     if app_input.is_dir():
         return InputKind.DIRECTORY
 
-    suffix = app_input.suffix.casefold()
+    suffix = app_input.suffix
     if suffix == ".apk":
         return InputKind.APK
     if suffix in SUPPORTED_ARCHIVE_SUFFIXES:
