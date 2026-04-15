@@ -137,7 +137,7 @@ def test_unpack_input_disambiguates_colliding_output_part_names(monkeypatch: Mon
     assert "a%2Fb" in output_names
 
 
-def test_unpack_input_decodes_single_apk_into_parts_directory(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_unpack_input_decodes_single_apk_into_root_part_directory(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     apk_path = tmp_path / "app.apk"
     _ = apk_path.write_bytes(b"app")
 
@@ -162,7 +162,7 @@ def test_unpack_input_decodes_single_apk_into_parts_directory(monkeypatch: Monke
 
     assert len(decode_outputs) == 1
     expected_output_root = cache.get_apktool_cache_dir().with_suffix(".tmp")
-    assert decode_outputs[0] == expected_output_root / "parts" / "app"
+    assert decode_outputs[0] == expected_output_root / "app"
 
 
 def test_unpack_input_rejects_archive_path_traversal(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
@@ -208,28 +208,28 @@ def test_unpack_input_rejects_duplicate_normalized_archive_member_path(
 
 def test_get_apk_version_prefers_base_part(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
-    (unpacked_path / "parts" / "feature").mkdir(parents=True)
-    (unpacked_path / "parts" / "base").mkdir(parents=True)
-    _ = (unpacked_path / "parts" / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
-    _ = (unpacked_path / "parts" / "base" / "apktool.yml").write_text("versionInfo:\n  versionName: 1.2.3\n")
+    (unpacked_path / "feature").mkdir(parents=True)
+    (unpacked_path / "base").mkdir(parents=True)
+    _ = (unpacked_path / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
+    _ = (unpacked_path / "base" / "apktool.yml").write_text("versionInfo:\n  versionName: 1.2.3\n")
 
     assert get_apk_version(unpacked_path) == "1.2.3"
 
 
 def test_get_apk_version_prefers_nested_base_part_after_output_name_normalization(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
-    (unpacked_path / "parts" / "x%2Fbase").mkdir(parents=True)
-    (unpacked_path / "parts" / "a%2Ffeature").mkdir(parents=True)
-    _ = (unpacked_path / "parts" / "x%2Fbase" / "apktool.yml").write_text("versionInfo:\n  versionName: 2.0.0\n")
-    _ = (unpacked_path / "parts" / "a%2Ffeature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
+    (unpacked_path / "x%2Fbase").mkdir(parents=True)
+    (unpacked_path / "a%2Ffeature").mkdir(parents=True)
+    _ = (unpacked_path / "x%2Fbase" / "apktool.yml").write_text("versionInfo:\n  versionName: 2.0.0\n")
+    _ = (unpacked_path / "a%2Ffeature" / "apktool.yml").write_text("versionInfo:\n  versionName: 9.9.9\n")
 
     assert get_apk_version(unpacked_path) == "2.0.0"
 
 
 def test_get_apk_version_returns_first_available_for_bundle(tmp_path: Path) -> None:
     unpacked_path = tmp_path / "apktool"
-    (unpacked_path / "parts" / "feature").mkdir(parents=True)
-    _ = (unpacked_path / "parts" / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 5.6.7\n")
+    (unpacked_path / "feature").mkdir(parents=True)
+    _ = (unpacked_path / "feature" / "apktool.yml").write_text("versionInfo:\n  versionName: 5.6.7\n")
 
     assert get_apk_version(unpacked_path) == "5.6.7"
 

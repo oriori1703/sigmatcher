@@ -112,8 +112,7 @@ def _decode_apk_parts(
     unpacked_tmp_path: Path,
     suppress_output: bool,
 ) -> None:
-    parts_root = unpacked_tmp_path / "parts"
-    parts_root.mkdir(parents=True, exist_ok=True)
+    unpacked_tmp_path.mkdir(parents=True, exist_ok=True)
 
     output_dir_names = tuple(_resolve_apk_part_output_dir_name(part_name) for part_name, _ in parts)
     output_dir_name_counts = Counter(output_dir_names)
@@ -123,7 +122,7 @@ def _decode_apk_parts(
         raise ValueError(f"Duplicate bundle part output directory after normalization: {duplicate_names}")
 
     for (_, apk_part), output_dir_name in zip(parts, output_dir_names, strict=True):
-        _decode_apk(apktool, apk_part, parts_root / output_dir_name, suppress_output)
+        _decode_apk(apktool, apk_part, unpacked_tmp_path / output_dir_name, suppress_output)
 
 
 def unpack_input(apktool: str, app_input: Path, cache: Cache, suppress_output: bool) -> None:
@@ -161,7 +160,7 @@ def _get_apk_version_from_yaml(apktool_yaml_file: Path) -> str | None:
 
 
 def get_apk_version(unpacked_path: Path) -> str | None:
-    apktool_yaml_files = sorted(unpacked_path.glob("parts/*/apktool.yml"), key=lambda path: path.as_posix())
+    apktool_yaml_files = sorted(unpacked_path.glob("*/apktool.yml"), key=lambda path: path.as_posix())
 
     preferred_apktool_yaml_files: list[Path] = []
     non_preferred_apktool_yaml_files: list[Path] = []
