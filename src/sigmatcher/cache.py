@@ -1,4 +1,3 @@
-import hashlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +6,7 @@ from typing import TypeAlias
 import platformdirs
 from pydantic import TypeAdapter
 
+from sigmatcher.input_paths import hash_input_path
 from sigmatcher.results import Result
 
 if sys.version_info >= (3, 11):
@@ -24,9 +24,9 @@ class Cache:
     cache_dir: Path
 
     @classmethod
-    def get_from_apk(cls, base_cache_dir: Path, apk: Path) -> Self:
-        apk_hash_hex = hashlib.sha256(apk.read_bytes()).hexdigest()
-        return cls(base_cache_dir / f"v2_{apk_hash_hex}")
+    def get_from_input(cls, base_cache_dir: Path, app_input: Path) -> Self:
+        input_hash_hex = hash_input_path(app_input)
+        return cls(base_cache_dir / f"v3_{input_hash_hex}")
 
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"

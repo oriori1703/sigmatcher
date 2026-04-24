@@ -42,14 +42,26 @@ To get started with sigmatcher, follow these steps:
    analyze the APK files.
    These files should specify the classes, methods, and fields you're interested in, along with any version-specific
    information. See the [Creating Signature Files](#creating-signature-files) section example for the format.
-2. **Analyze an APK**: With your signature file ready, you can now analyze an APK to find matches for your signatures.
-   Use the sigmatcher analyze command, specifying the path to the APK and the signature file(s):
+2. **Analyze your app package**: With your signature file ready, you can analyze different Android package inputs:
+   - single APK (`.apk`)
+   - bundle archive (`.apkm` / `.xapk`)
+   - directory containing split APK parts (`*.apk`, searched recursively)
+
+   Use the sigmatcher analyze command, specifying the input path and the signature file(s):
 
    ```shell
    sigmatcher analyze path/to/your/app.apk --signatures path/to/your/signature_file.yaml
    ```
 
-   This command will decode the APK, apply the signatures, and output the analysis results, highlighting matched
+   ```shell
+   sigmatcher analyze path/to/your/app.apkm --signatures path/to/your/signature_file.yaml
+   ```
+
+   ```shell
+   sigmatcher analyze path/to/your/split-apks/ --signatures path/to/your/signature_file.yaml
+   ```
+
+   This command will decode the package parts, apply the signatures, and output the analysis results, highlighting matched
    classes, methods and fields.
 
 ## Creating Signature Files

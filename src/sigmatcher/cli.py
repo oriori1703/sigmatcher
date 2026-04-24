@@ -1,7 +1,6 @@
 import io
 import json
 import shutil
-import subprocess
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -12,7 +11,6 @@ import pydantic_core
 import rich.markup
 import typer
 import yaml
-from packaging import version
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
@@ -24,7 +22,9 @@ from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
+from sigmatcher.input_paths import validate_input_path
 from sigmatcher.results import MatchedClass, Result
+from sigmatcher.unpack import get_apk_version, unpack_input
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -42,15 +42,27 @@ cache_app = typer.Typer(help="Manage Sigmatcher's cache.")
 app.add_typer(cache_app, name="cache")
 
 
+def app_input_callback(value: Path | None) -> Path | None:
+    if value is None:
+        return value
+
+    try:
+        validate_input_path(value)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    return value
+
+
 @cache_app.command(name="info", hidden=True)
 @cache_app.command(name="dir")
 def get_dir(
-    apk: Annotated[
+    app_input: Annotated[
         Path | None,
         typer.Argument(
-            help="Optionally, a path to an APK file. If omitted, prints info about the global cache.",
-            dir_okay=False,
+            help="Optionally, a path to an APK/APKM/XAPK file or directory with APK parts.",
+            dir_okay=True,
             exists=True,
+            callback=app_input_callback,
         ),
     ] = None,
     cache_dir: Annotated[
@@ -63,20 +75,21 @@ def get_dir(
     """
     Get the path to Sigmatcher's cache directory.
     """
-    if apk is None:
+    if app_input is None:
         print(str(cache_dir))
     else:
-        print(Cache.get_from_apk(cache_dir, apk).cache_dir)
+        print(Cache.get_from_input(cache_dir, app_input).cache_dir)
 
 
 @cache_app.command()
 def clean(
-    apk: Annotated[
+    app_input: Annotated[
         Path | None,
         typer.Argument(
-            help="Optionally, a path to a specific APK file to clean the cache for. If omitted, cleans everything.",
-            dir_okay=False,
+            help="Optionally, a path to an APK/APKM/XAPK file or directory with APK parts.",
+            dir_okay=True,
             exists=True,
+            callback=app_input_callback,
         ),
     ] = None,
     cache_dir: Annotated[
@@ -89,8 +102,8 @@ def clean(
     """
     Clean the cache directory.
     """
-    if apk is not None:
-        shutil.rmtree(Cache.get_from_apk(cache_dir, apk).cache_dir)
+    if app_input is not None:
+        shutil.rmtree(Cache.get_from_input(cache_dir, app_input).cache_dir)
     else:
         for path in cache_dir.iterdir():
             shutil.rmtree(path)
@@ -184,53 +197,6 @@ def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
             definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
         definition_groups.append(tuple(definitions))
     return merge_definitions_groups(definition_groups)
-
-
-def _get_apktool_version(apktool: str) -> str:
-    # APKTool in non-interactive mode will run the `pause` command after execution on Windows
-    proc = subprocess.run([apktool, "--version"], check=True, capture_output=True, input=b"\n")
-    # Take only the first line, since the `pause` command prints output as well
-    return proc.stdout.decode().splitlines()[0]
-
-
-def _unpack_apk(apktool: str, apk: Path, cache: Cache, suppress_output: bool) -> None:
-    unpacked_path = cache.get_apktool_cache_dir()
-    if unpacked_path.exists():
-        return
-
-    if version.parse(_get_apktool_version(apktool)) >= version.parse("2.12.0"):
-        only_manifest_flags = ["--only-manifest"]
-    else:
-        only_manifest_flags = ["--no-res", "--force-manifest"]
-
-    # APKTool in non-interactive mode will run the `pause` command on Windows, so send a newline as input
-    _ = subprocess.run(
-        [
-            apktool,
-            "decode",
-            apk,
-            *only_manifest_flags,
-            "--no-assets",
-            "-f",
-            "--output",
-            unpacked_path.with_suffix(".tmp"),
-        ],
-        check=True,
-        stdout=sys.stderr if not suppress_output else subprocess.DEVNULL,
-        input=b"\n",
-    )
-    _ = shutil.move(unpacked_path.with_suffix(".tmp"), unpacked_path)
-
-
-def _get_apk_version(unpacked_path: Path) -> str | None:
-    apktool_yaml_file = unpacked_path / "apktool.yml"
-    with apktool_yaml_file.open() as f:
-        apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]  # pyright: ignore[reportAny]
-
-    if isinstance(apk_version, float | int):
-        apk_version = str(apk_version)
-    assert isinstance(apk_version, str) or apk_version is None
-    return apk_version
 
 
 def _output_successful_results(
@@ -331,8 +297,15 @@ class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
 
 @app.command()
 def analyze(  # noqa: PLR0913
-    apk: Annotated[
-        Path, typer.Argument(help="Path to the apk that will be analyzed", exists=True, file_okay=True, dir_okay=False)
+    app_input: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to an APK/APKM/XAPK file, or a directory with APK parts",
+            exists=True,
+            file_okay=True,
+            dir_okay=True,
+            callback=app_input_callback,
+        ),
     ],
     signatures: Annotated[
         list[Path],
@@ -363,17 +336,17 @@ def analyze(  # noqa: PLR0913
     ] = False,
 ) -> dict[str, Result | SigmatcherError]:
     """
-    Analyze an APK file using the provided signatures.
+    Analyze an APK input using the provided signatures.
     """
     if no_progress:
         progress_console.quiet = True
 
     merged_definitions = _read_definitions(signatures)
-    cache = Cache.get_from_apk(cache_dir, apk)
+    cache = Cache.get_from_input(cache_dir, app_input)
     with progress_console.status("Unpacking APK..."):
-        _unpack_apk(apktool, apk, cache, suppress_output=not debug)
+        unpack_input(apktool, app_input, cache, suppress_output=not debug)
 
-    apk_version = _get_apk_version(cache.get_apktool_cache_dir())
+    apk_version = get_apk_version(cache.get_apktool_cache_dir())
     if apk_version is None:
         stderr_console.print("[yellow][Warning][/yellow] No version was found in the APK. Using 0.0.0.0")
         apk_version = "0.0.0.0"
