@@ -2,6 +2,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+import pytest
 from _pytest.monkeypatch import MonkeyPatch
 
 from sigmatcher.cache import Cache
@@ -15,11 +16,8 @@ def test_validate_input_path_directory_without_apks_raises(tmp_path: Path) -> No
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
 
-    try:
+    with pytest.raises(ValueError, match=r"contains no \.apk files"):
         validate_input_path(bundle_dir)
-        raise AssertionError("Expected ValueError")
-    except ValueError as e:
-        assert "contains no .apk files" in str(e)
 
 
 def test_list_directory_apk_files_is_recursive_and_sorted(tmp_path: Path) -> None:
@@ -176,12 +174,8 @@ def test_unpack_input_rejects_archive_path_traversal(monkeypatch: MonkeyPatch, t
         raise AssertionError("subprocess.run should not be called for unsafe archive entries")
 
     monkeypatch.setattr(subprocess, "run", fail_run)
-
-    try:
+    with pytest.raises(ValueError, match="Unsafe archive member path"):
         unpack_input("apktool", archive_path, cache, suppress_output=True)
-        raise AssertionError("Expected ValueError")
-    except ValueError as e:
-        assert "Unsafe archive member path" in str(e)
 
 
 def test_unpack_input_rejects_duplicate_normalized_archive_member_path(
@@ -198,12 +192,8 @@ def test_unpack_input_rejects_duplicate_normalized_archive_member_path(
         raise AssertionError("subprocess.run should not be called for duplicate normalized archive members")
 
     monkeypatch.setattr(subprocess, "run", fail_run)
-
-    try:
+    with pytest.raises(ValueError, match="Duplicate archive member path after normalization"):
         unpack_input("apktool", archive_path, cache, suppress_output=True)
-        raise AssertionError("Expected ValueError")
-    except ValueError as e:
-        assert "Duplicate archive member path after normalization" in str(e)
 
 
 def test_get_apk_version_prefers_base_part(tmp_path: Path) -> None:
@@ -268,11 +258,8 @@ def test_validate_input_path_rejects_bad_archive(tmp_path: Path) -> None:
     archive_path = tmp_path / "broken.xapk"
     _ = archive_path.write_text("not a zip")
 
-    try:
+    with pytest.raises(ValueError, match="not a valid zip file"):
         validate_input_path(archive_path)
-        raise AssertionError("Expected ValueError")
-    except ValueError as e:
-        assert "not a valid zip file" in str(e)
 
 
 def test_unpack_input_cleans_partial_tmp_before_decode(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
