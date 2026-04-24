@@ -55,8 +55,10 @@ class MatchError(SigmatcherError):
         if self.signatures is None:
             return ""
 
-        signature_mesage = "\n ".join(signature.model_dump_json(exclude_defaults=True) for signature in self.signatures)
-        return f"- Signatures:\n {signature_mesage}"
+        signature_message = "\n ".join(
+            signature.model_dump_json(exclude_defaults=True) for signature in self.signatures
+        )
+        return f"- Signatures:\n {signature_message}"
 
 
 class NoMatchesError(MatchError):
@@ -94,7 +96,7 @@ class DependencyError(SigmatcherError):
     @override
     def debug_message(self) -> str:
         dependencies_message = "\n ".join(self.failed_dependencies)
-        return f"- Dependecies: \n{dependencies_message}"
+        return f"- Dependencies: \n{dependencies_message}"
 
 
 class MissingDependenciesError(DependencyError):

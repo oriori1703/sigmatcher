@@ -154,7 +154,7 @@ Here's a basic example of what a signature file looks like:
   - version_range: Optional. Specifies the application versions this signature applies to, using version specifiers
       like those used by pip and described in
       [PEP-440](https://packaging.python.org/en/latest/specifications/version-specifiers/#version-specifiers).
-      This could also contains a list of specifers, which act like a the logical "or" operator.
+      This could also contains a list of specifiers, which act like a logical "or" operator.
 
 Most of those fields are optional, and you can use them as needed.
 

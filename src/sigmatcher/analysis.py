@@ -374,12 +374,12 @@ def create_analyzers(
 def sort_analyzers(
     name_to_analyzer: dict[str, Analyzer], results: dict[str, Result | SigmatcherError]
 ) -> Iterable[str]:
-    ananlyzers_set = set(name_to_analyzer.keys())
+    analyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
     for analyzer in name_to_analyzer.values():
         dependencies = analyzer.dependencies
-        nonexistent_dependencies = dependencies.difference(ananlyzers_set)
+        nonexistent_dependencies = dependencies.difference(analyzers_set)
         if nonexistent_dependencies:
             results[analyzer.name] = MissingDependenciesError(analyzer.name, list(nonexistent_dependencies))
         else:

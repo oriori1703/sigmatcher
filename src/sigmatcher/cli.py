@@ -180,9 +180,9 @@ def convert(
         raw_input = sys.stdin.read()
     else:
         raise ValueError("Cannot read from stdin, please provide an input file")
-    intermidiate_mappings = parse_from_format(raw_input, input_format)
+    intermediate_mappings = parse_from_format(raw_input, input_format)
 
-    mapping_output = convert_to_format(intermidiate_mappings, output_format)
+    mapping_output = convert_to_format(intermediate_mappings, output_format)
     if output_file is None:
         print(mapping_output)
     else:
@@ -214,8 +214,8 @@ def _render_error(error: SigmatcherError, debug: bool) -> RenderableType:
         f"[red]{rich.markup.escape(error.analyzer_name)}[/red] - {rich.markup.escape(error.short_message())}"
     )
     if debug and (debug_message := error.debug_message()):
-        formated_debug_message = Padding(f"[yellow]{rich.markup.escape(debug_message)}[/yellow]", (0, 4))
-        return Group(error_message, "[yellow]Debug Info:[/yellow]", formated_debug_message)
+        formatted_debug_message = Padding(f"[yellow]{rich.markup.escape(debug_message)}[/yellow]", (0, 4))
+        return Group(error_message, "[yellow]Debug Info:[/yellow]", formatted_debug_message)
 
     return Group(error_message)
 
@@ -232,8 +232,8 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
     for result in failed_results.values():
         if isinstance(result, FailedDependencyError):
             result.should_show_debug = False
-            for dependecy in result.failed_dependencies:
-                dependent_errors.setdefault(dependecy, []).append(result)
+            for dependency in result.failed_dependencies:
+                dependent_errors.setdefault(dependency, []).append(result)
         else:
             top_level_errors.append(result)
 
