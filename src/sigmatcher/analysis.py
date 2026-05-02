@@ -204,6 +204,8 @@ class ClassAnalyzer(Analyzer):
     @override
     def from_cache(self, cached_result: Result) -> MatchedClass:
         assert isinstance(cached_result, MatchedClass)
+        assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
+
         original_class = Class(name=self.definition.name, package=self.definition.package or cached_result.new.package)
 
         return MatchedClass(
@@ -212,6 +214,7 @@ class ClassAnalyzer(Analyzer):
             matched_methods=[],
             matched_fields=[],
             exports=[],
+            smali_file=cached_result.smali_file,
         )
 
 
