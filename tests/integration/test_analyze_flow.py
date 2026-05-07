@@ -106,3 +106,11 @@ def test_analyze_end_to_end_with_macros_and_children(tmp_path: Path, monkeypatch
     network_handler_result = results["NetworkHandler"]
     assert isinstance(network_handler_result, MatchedClass)
     assert network_handler_result.new.to_java_representation() == "Lcom/example/n;"
+
+    cached_results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+
+    cached_connection_manager_result = cached_results["ConnectionManager"]
+    assert isinstance(cached_connection_manager_result, MatchedClass)
+    assert [method.original.name for method in cached_connection_manager_result.matched_methods] == ["read"]
+    assert [field.original.name for field in cached_connection_manager_result.matched_fields] == ["counter"]
+    assert [export.new.name for export in cached_connection_manager_result.exports] == ["readConst"]
