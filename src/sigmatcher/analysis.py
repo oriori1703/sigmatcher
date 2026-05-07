@@ -161,7 +161,7 @@ class Analyzer(ABC):
     def __repr__(self) -> str:
         return self.name
 
-    def from_cache(self, cached_result: Result) -> Result:
+    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:  # pyright: ignore[reportUnusedParameter]
         return cached_result
 
 
@@ -202,7 +202,7 @@ class ClassAnalyzer(Analyzer):
         )
 
     @override
-    def from_cache(self, cached_result: Result) -> MatchedClass:
+    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
         assert isinstance(cached_result, MatchedClass)
         assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
 
@@ -231,6 +231,18 @@ class ChildAnalyzer(Analyzer, ABC):
         parent_cache_key = self.parent.get_cache_key(results).encode()
         return super()._get_cache_content_to_hash(results) + parent_cache_key
 
+    @abstractmethod
+    def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
+        raise NotImplementedError()
+
+    @override
+    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:
+        parent_class_result = results[self.parent.name]
+        assert isinstance(parent_class_result, MatchedClass)
+        self._update_parent_with_child_result(cached_result, parent_class_result)
+
+        return super().from_cache(cached_result, results)
+
 
 @dataclasses.dataclass(frozen=True)
 class FieldAnalyzer(ChildAnalyzer):
@@ -258,8 +270,13 @@ class FieldAnalyzer(ChildAnalyzer):
         # TODO: should we get the types for the original field from the definition?
         original_field = Field(name=self.definition.name, type=new_field.type)
         matched_field = MatchedField(original=original_field, new=new_field)
-        parent_class_result.matched_fields.append(matched_field)
+        self._update_parent_with_child_result(matched_field, parent_class_result)
         return matched_field
+
+    @override
+    def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
+        assert isinstance(new_result, MatchedField)
+        parent_class_result.matched_fields.append(new_result)
 
     @property
     @override
@@ -300,8 +317,13 @@ class MethodAnalyzer(ChildAnalyzer):
             name=self.definition.name, argument_types=new_method.argument_types, return_type=new_method.return_type
         )
         matched_method = MatchedMethod(original=original_method, new=new_method)
-        parent_class_result.matched_methods.append(matched_method)
+        self._update_parent_with_child_result(matched_method, parent_class_result)
         return matched_method
+
+    @override
+    def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
+        assert isinstance(new_result, MatchedMethod)
+        parent_class_result.matched_methods.append(new_result)
 
     @property
     @override
@@ -332,8 +354,13 @@ class ExportAnalyzer(ChildAnalyzer):
         export_value = next(iter(captured_names))
 
         result = MatchedExport.from_value(self.definition.name, export_value)
-        parent_class_result.exports.append(result)
+        self._update_parent_with_child_result(result, parent_class_result)
         return result
+
+    @override
+    def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
+        assert isinstance(new_result, MatchedExport)
+        parent_class_result.exports.append(new_result)
 
     @property
     @override
@@ -422,7 +449,7 @@ def analyze(
             if cached_result is None:
                 result = analyzer.analyze(results)
             else:
-                result = analyzer.from_cache(cached_result)
+                result = analyzer.from_cache(cached_result, results)
 
             results[analyzer_name] = result
             new_results_cache[cache_key] = result
