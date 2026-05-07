@@ -161,7 +161,7 @@ class Analyzer(ABC):
     def __repr__(self) -> str:
         return self.name
 
-    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:  # pyright: ignore[reportUnusedParameter]
+    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:
         return cached_result
 
 
