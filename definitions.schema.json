@@ -98,6 +98,12 @@
           },
           "title": "Exports",
           "type": "array"
+        },
+        "dynamic_name": {
+          "default": false,
+          "description": "If true, capture the readable class name from a `(?P<class_name>...)` named group\nin one of the signatures. The YAML `name` is the placeholder used for macros,\ncaching, and dependency-graph identity; the captured value becomes the readable\n`original.name` in the result and is what shows up in output mapping formats.",
+          "title": "Dynamic Name",
+          "type": "boolean"
         }
       },
       "required": [

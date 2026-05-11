@@ -18,6 +18,7 @@ invaluable resource for long-running reverse engineering projects.
   - [Signature File JSON Schema](#signature-file-json-schema)
   - [Structure of a Signature File](#structure-of-a-signature-file)
   - [Using Macros in Signatures](#using-macros-in-signatures)
+  - [Dynamic Class Names](#dynamic-class-names)
 - [License](#license)
 
 ## Installation
@@ -250,6 +251,46 @@ In this example:
 - If a macro references a result that cannot be matched, the signature will fail to match
 - Use the `java` property when you need the complete Java/Smali representation of a class, method, or field
 - Macros work with both `regex` and `glob` signature types
+
+### Dynamic Class Names
+
+Normally a `ClassDefinition` declares the human-readable class `name` up front and `sigmatcher`
+finds the obfuscated class it maps to. Sometimes the readable name is not known in advance but
+is embedded in the obfuscated class itself — for example, a class whose `toString()` returns
+a literal containing its original name:
+
+```smali
+const-string v0, "ConnectionManager{state=connected"
+```
+
+In that case you can opt in to **dynamic class name** capture: declare a placeholder identifier
+as the YAML `name`, set `dynamic_name: true`, and add a `(?P<class_name>...)` named group in one
+of the signatures. The captured substring becomes the readable name in all output mapping
+formats; the placeholder `name` is still used as the identifier for macro references, caching,
+and the dependency graph.
+
+```yaml
+# $schema: ./definitions.schema.json
+# yaml-language-server: $schema=./definitions.schema.json
+
+- name: "UnknownToStringClass"
+  dynamic_name: true
+  signatures:
+    - signature: '"(?P<class_name>\w+)\{state='
+      type: regex
+      count: 1
+```
+
+Notes:
+
+- The placeholder `name` (`UnknownToStringClass` above) is what other definitions reference via
+  macros (e.g. `${UnknownToStringClass.java}`), and what appears in error messages.
+- If a `dynamic_name: true` definition's signatures match the file but no `(?P<class_name>...)`
+  capture is produced, the match fails (`NoMatchesError`).
+- If the capture yields multiple distinct values from the matched smali, the match fails
+  (`TooManyMatchesError`). Tighten the regex to disambiguate.
+- The opt-in flag is required: putting a `(?P<class_name>...)` group on a class signature
+  without setting `dynamic_name: true` is a validation error, to prevent silent activation.
 
 ## License
 
