@@ -1,5 +1,8 @@
 import re
 
+import pydantic
+import pytest
+
 from sigmatcher.definitions import (
     ClassDefinition,
     CountRange,
@@ -76,3 +79,71 @@ def test_merge_definitions_groups_prefers_last_signatures_and_merges_children() 
     assert isinstance(signature, RegexSignature)
     assert signature.signature.pattern == "new"
     assert {method.name for method in merged_class.methods} == {"read", "write"}
+
+
+def test_capture_class_name_extracts_single_value() -> None:
+    signature = RegexSignature.model_validate({"type": "regex", "signature": r'"(?P<class_name>\w+)\{state='})
+    assert signature.capture_class_name('const-string v0, "ConnectionManager{state=connected"') == {"ConnectionManager"}
+
+
+def test_capture_class_name_extracts_multiple_distinct() -> None:
+    signature = RegexSignature.model_validate({"type": "regex", "signature": r'"(?P<class_name>\w+)\{state='})
+    captures = signature.capture_class_name('const-string v0, "Alpha{state="\nconst-string v1, "Beta{state="\n')
+    assert captures == {"Alpha", "Beta"}
+
+
+def test_capture_class_name_returns_empty_when_pattern_misses() -> None:
+    signature = RegexSignature.model_validate({"type": "regex", "signature": r'"(?P<class_name>\w+)\{state='})
+    assert signature.capture_class_name("nothing here") == set()
+
+
+def test_has_class_name_group_reflects_pattern() -> None:
+    with_group = RegexSignature.model_validate({"type": "regex", "signature": r"(?P<class_name>\w+)"})
+    without_group = RegexSignature.model_validate({"type": "regex", "signature": r"\w+"})
+    assert with_group.has_class_name_group()
+    assert not without_group.has_class_name_group()
+
+
+def test_dynamic_name_validator_requires_group() -> None:
+    with pytest.raises(pydantic.ValidationError, match="class_name"):
+        ClassDefinition(
+            name="UnknownClass",
+            signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+            dynamic_name=True,
+        )
+
+
+def test_dynamic_name_validator_forbids_group_when_false() -> None:
+    with pytest.raises(pydantic.ValidationError, match="dynamic_name"):
+        ClassDefinition(
+            name="StaticClass",
+            signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<class_name>\w+)")),),
+            dynamic_name=False,
+        )
+
+
+def test_dynamic_name_validator_accepts_consistent_definitions() -> None:
+    dynamic = ClassDefinition(
+        name="UnknownClass",
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<class_name>\w+)\{state=")),),
+        dynamic_name=True,
+    )
+    assert dynamic.dynamic_name
+
+    static = ClassDefinition(
+        name="StaticClass",
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+    )
+    assert not static.dynamic_name
+
+
+def test_class_name_group_survives_macro_resolution() -> None:
+    signature = RegexSignature.model_validate(
+        {
+            "type": "regex",
+            "signature": r"new-instance .+, ${OtherClass.java}.*?(?P<class_name>\w+)\{state=",
+        }
+    )
+    resolved = signature.resolve_macro(MacroStatement("OtherClass", "java"), "Lcom/example/Other;")
+    assert "class_name" in resolved.signature.groupindex
+    assert resolved.capture_class_name('new-instance v0, Lcom/example/Other; foo bar "Captured{state=') == {"Captured"}

@@ -55,3 +55,19 @@ def test_legacy_formatter_includes_exports(sample_matched_class: MatchedClass) -
     legacy = convert_to_format(payload, MappingFormat.LEGACY)
     assert '"exports"' in legacy
     assert '"exportA": "VALUE_A"' in legacy
+
+
+def test_legacy_formatter_uses_captured_original_name_as_key(sample_matched_class: MatchedClass) -> None:
+    payload = {"PlaceholderId": sample_matched_class}
+    legacy = convert_to_format(payload, MappingFormat.LEGACY)
+    assert '"OriginalSample"' in legacy
+    assert '"PlaceholderId"' not in legacy
+
+
+def test_legacy_formatter_sorts_by_captured_original_name(
+    sample_matched_class: MatchedClass,
+) -> None:
+    alpha = sample_matched_class.model_copy(update={"original": Class(name="Alpha", package="com.example.old")})
+    zeta = sample_matched_class.model_copy(update={"original": Class(name="Zeta", package="com.example.old")})
+    legacy = convert_to_format({"Z_placeholder": zeta, "A_placeholder": alpha}, MappingFormat.LEGACY)
+    assert legacy.index('"Alpha"') < legacy.index('"Zeta"')
