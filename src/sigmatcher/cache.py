@@ -26,7 +26,7 @@ class Cache:
     @classmethod
     def get_from_input(cls, base_cache_dir: Path, app_input: Path) -> Self:
         input_hash_hex = hash_input_path(app_input)
-        return cls(base_cache_dir / f"v3_{input_hash_hex}")
+        return cls(base_cache_dir / f"v4_{input_hash_hex}")
 
     def get_apktool_cache_dir(self) -> Path:
         return self.cache_dir / "apktool"

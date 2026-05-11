@@ -10,6 +10,7 @@ from pathlib import Path
 from sigmatcher.cache import Cache, ResultsCacheType
 from sigmatcher.definitions import (
     SIGNATURES_TYPE_ADAPTER,
+    BaseRegexSignature,
     ClassDefinition,
     Definition,
     ExportDefinition,
@@ -151,7 +152,7 @@ class Analyzer(ABC):
 
     def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
         analyzer_content_hash = hashlib.sha256(self._get_cache_content_to_hash(results))
-        return f"v3_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
+        return f"v4_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
@@ -196,7 +197,22 @@ class ClassAnalyzer(Analyzer):
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
         new_class = Class.from_java_representation(raw_class_name)
-        original_class = Class(name=self.definition.name, package=self.definition.package or new_class.package)
+
+        readable_name = self.definition.name
+        if self.definition.dynamic_name:
+            raw_class = match.read_text()
+            captures: set[str] = set()
+            for signature in signatures:
+                if isinstance(signature, BaseRegexSignature):
+                    captures.update(signature.capture_class_name(raw_class))
+            captures = {c.strip() for c in captures if c and c.strip()}
+            if not captures:
+                raise NoMatchesError(self.name, tuple(signatures))
+            if len(captures) > 1:
+                raise TooManyMatchesError[str](self.name, tuple(signatures), captures)
+            readable_name = next(iter(captures))
+
+        original_class = Class(name=readable_name, package=self.definition.package or new_class.package)
         return MatchedClass(
             original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[], exports=[]
         )
@@ -206,7 +222,8 @@ class ClassAnalyzer(Analyzer):
         assert isinstance(cached_result, MatchedClass)
         assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
 
-        original_class = Class(name=self.definition.name, package=self.definition.package or cached_result.new.package)
+        readable_name = cached_result.original.name if self.definition.dynamic_name else self.definition.name
+        original_class = Class(name=readable_name, package=self.definition.package or cached_result.new.package)
 
         return MatchedClass(
             original=original_class,

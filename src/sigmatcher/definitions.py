@@ -155,6 +155,18 @@ class BaseRegexSignature(BaseSignature, frozen=True):
 
         return set(match.groups())
 
+    def has_class_name_group(self) -> bool:
+        return "class_name" in self.signature.groupindex
+
+    def capture_class_name(self, value: str) -> set[str]:
+        captures: set[str] = set()
+        for match in self.signature.finditer(value):
+            try:
+                captures.add(match.group("class_name"))
+            except IndexError:
+                continue
+        return captures
+
     @override
     def get_dependencies(self) -> list[str]:
         return [macro.subject for macro in self.get_macro_definitions()]
@@ -284,6 +296,27 @@ class ClassDefinition(Definition, frozen=True):
     """A list of method definitions."""
     exports: tuple[ExportDefinition, ...] = ()
     """A list of export definitions."""
+    dynamic_name: bool = False
+    """If true, capture the readable class name from a `(?P<class_name>...)` named group
+    in one of the signatures. The YAML `name` is the placeholder used for macros,
+    caching, and dependency-graph identity; the captured value becomes the readable
+    `original.name` in the result and is what shows up in output mapping formats."""
+
+    @pydantic.model_validator(mode="after")
+    def _check_dynamic_name_group(self) -> Self:
+        has_group = any(isinstance(sig, BaseRegexSignature) and sig.has_class_name_group() for sig in self.signatures)
+        if self.dynamic_name and not has_group:
+            raise ValueError(
+                f"ClassDefinition {self.name!r} has dynamic_name=True but no signature "
+                f"contains a (?P<class_name>...) named group."
+            )
+        if not self.dynamic_name and has_group:
+            raise ValueError(
+                f"ClassDefinition {self.name!r} contains a (?P<class_name>...) named group "
+                f"but dynamic_name is not set. Set dynamic_name: true to enable capturing "
+                f"the class name from the signature."
+            )
+        return self
 
 
 DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[ClassDefinition])
