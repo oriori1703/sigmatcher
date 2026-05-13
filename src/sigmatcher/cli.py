@@ -27,7 +27,7 @@ from sigmatcher.definitions import (
     merge_definitions_groups,
     validate_definitions,
 )
-from sigmatcher.errors import FailedDependencyError, SigmatcherError
+from sigmatcher.errors import DuplicateTopLevelDefinitionError, FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, flatten_analyzer_results, parse_from_format
 from sigmatcher.input_paths import validate_input_path
 from sigmatcher.results import MatchedClass, Result
@@ -201,12 +201,14 @@ def _read_definitions(signatures: list[Path]) -> tuple[TopLevelDefinition, ...]:
 
     Each YAML is a list of top-level definitions discriminated by `type`. Missing
     `type` defaults to "class" so existing v1.x signature files (a bare list of
-    class defs) keep working. Definitions are merged across files by (kind, name);
-    method/field/export top-level kinds do not currently collide with class kinds
-    by accident because they live in separate dispatch buckets.
+    class defs) keep working. Class definitions are merged across files by name via
+    `merge_definitions_groups`; top-level method/field/export defs are not merged —
+    duplicates across files raise `DuplicateTopLevelDefinitionError` (a hard error,
+    matching the "fail loud on authoring bugs" principle elsewhere in the project).
     """
     class_groups: list[tuple[ClassDefinition, ...]] = []
     other_defs: list[TopLevelDefinition] = []
+    other_defs_seen: dict[tuple[str, str], str] = {}
     for signature_file in signatures:
         with signature_file.open("r") as f:
             raw_yaml = yaml.safe_load(f)  # pyright: ignore[reportAny]
@@ -216,6 +218,11 @@ def _read_definitions(signatures: list[Path]) -> tuple[TopLevelDefinition, ...]:
             if isinstance(definition, ClassDefinition):
                 per_file_classes.append(definition)
             else:
+                kind = getattr(definition, "type", definition.__class__.__name__)
+                key = (str(kind), definition.name)
+                if key in other_defs_seen:
+                    raise DuplicateTopLevelDefinitionError(definition.name, str(kind))
+                other_defs_seen[key] = str(signature_file)
                 other_defs.append(definition)
         class_groups.append(tuple(per_file_classes))
     merged_classes = merge_definitions_groups(class_groups)
