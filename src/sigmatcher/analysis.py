@@ -392,29 +392,43 @@ class ChildAnalyzer(Analyzer, ABC):
 
     @override
     def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
-        parents_by_smali = {parent.new.to_java_representation(): parent for parent in self._get_parent_matches(results)}
+        # Key by (java repr, readable original name). A single dynamic parent def can
+        # legitimately emit N MatchedClass entries that share a smali file but carry
+        # different readable names (multiple captures from one class). Keying by java
+        # repr alone would have the second parent overwrite the first.
+        parents_by_smali: dict[tuple[str, str], MatchedClass] = {
+            (parent.new.to_java_representation(), parent.original.name): parent
+            for parent in self._get_parent_matches(results)
+        }
         for cached_result in cached_results:
             # Cached child results store the parent's obfuscated java repr so we can
             # re-link them to the right parent after a multi-match parent.
             parent = self._parent_for_cached(cached_result, parents_by_smali)
             if parent is None:
                 # Parent set changed between runs (e.g. a previously-cached parent is no
-                # longer matched). Skip — the orchestrator will re-run the child rather
-                # than serving a stale cache hit.
+                # longer matched, or multiple parents now share a smali file in a way
+                # that's ambiguous on cache replay). Skip — the orchestrator will re-run
+                # the child rather than serving a stale cache hit.
                 continue
             self._update_parent_with_child_result(cached_result, parent)
 
         return super().from_cache(cached_results, results)
 
     def _parent_for_cached(
-        self, cached_result: Result, parents_by_smali: dict[str, MatchedClass]
+        self, cached_result: Result, parents_by_smali: dict[tuple[str, str], MatchedClass]
     ) -> MatchedClass | None:
         # Cached children carry the parent's obfuscated java repr via `smali_class`
-        # (see MatchedField/MatchedMethod/MatchedExport). Use it as the parent_match_id
-        # so we re-link correctly after a multi-match parent.
+        # (see MatchedField/MatchedMethod/MatchedExport). The cached child does not
+        # carry the parent's readable name, so when multiple parents share a smali
+        # file we can't disambiguate from the cache alone — return None to force a
+        # re-analysis, which is correct (no stale link) but not a cache hit.
         smali_class = getattr(cached_result, "smali_class", None)
         if smali_class is not None:
-            return parents_by_smali.get(smali_class.to_java_representation())  # pyright: ignore[reportAny]
+            smali_java = smali_class.to_java_representation()  # pyright: ignore[reportAny]
+            same_smali = [parent for key, parent in parents_by_smali.items() if key[0] == smali_java]
+            if len(same_smali) == 1:
+                return same_smali[0]
+            return None
         # Fallback for single-parent children — match the only available parent.
         if len(parents_by_smali) == 1:
             return next(iter(parents_by_smali.values()))

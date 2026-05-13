@@ -1012,3 +1012,49 @@ def test_cache_round_trip_dynamic_multi_match(tmp_path: Path, monkeypatch: pytes
         assert child.smali_class is not None
         parent_javas.add(child.smali_class.to_java_representation())
     assert parent_javas == {"Lcom/example/a;", "Lcom/example/b;"}
+
+
+@pytest.mark.integration
+def test_cache_round_trip_one_smali_two_captured_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A single dynamic parent def whose signature matches one smali file but captures
+    two distinct readable names (Alpha and Beta) must surface BOTH parents independently
+    on cache replay. Pre-fix, the parent-by-smali dict was keyed by java repr only, so
+    the second readable name overwrote the first."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public describe()Ljava/lang/String;\n"
+        '    const-string v0, "Alpha{state=on"\n'
+        '    const-string v1, "Beta{state=off"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+        ),
+    ]
+
+    first = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    first_parents = first["DynParent"]
+    assert isinstance(first_parents, list)
+    first_captured = {p.original.name for p in first_parents if isinstance(p, MatchedClass)}
+    assert first_captured == {"Alpha", "Beta"}
+
+    # Cache replay: both captured-name parents must survive independently — neither
+    # one should overwrite the other in the cache-rebuild path.
+    second = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    second_parents = second["DynParent"]
+    assert isinstance(second_parents, list)
+    second_captured = {p.original.name for p in second_parents if isinstance(p, MatchedClass)}
+    assert second_captured == {"Alpha", "Beta"}
