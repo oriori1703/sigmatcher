@@ -94,23 +94,36 @@ def test_analyze_end_to_end_with_macros_and_children(tmp_path: Path, monkeypatch
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
-    assert isinstance(results["ConnectionManager"], MatchedClass)
-    assert isinstance(results["ConnectionManager.methods.read"], MatchedMethod)
-    assert isinstance(results["ConnectionManager.fields.counter"], MatchedField)
-    assert isinstance(results["ConnectionManager.exports.readConst"], MatchedExport)
-    assert isinstance(results["NetworkHandler"], MatchedClass)
-
-    connection_manager_result = results["ConnectionManager"]
+    connection_manager_results = results["ConnectionManager"]
+    assert isinstance(connection_manager_results, list)
+    assert len(connection_manager_results) == 1
+    connection_manager_result = connection_manager_results[0]
     assert isinstance(connection_manager_result, MatchedClass)
     assert connection_manager_result.new.to_java_representation() == "Lcom/example/a;"
 
-    network_handler_result = results["NetworkHandler"]
+    read_results = results["ConnectionManager.methods.read"]
+    assert isinstance(read_results, list)
+    assert isinstance(read_results[0], MatchedMethod)
+
+    counter_results = results["ConnectionManager.fields.counter"]
+    assert isinstance(counter_results, list)
+    assert isinstance(counter_results[0], MatchedField)
+
+    export_results = results["ConnectionManager.exports.readConst"]
+    assert isinstance(export_results, list)
+    assert isinstance(export_results[0], MatchedExport)
+
+    network_handler_results = results["NetworkHandler"]
+    assert isinstance(network_handler_results, list)
+    network_handler_result = network_handler_results[0]
     assert isinstance(network_handler_result, MatchedClass)
     assert network_handler_result.new.to_java_representation() == "Lcom/example/n;"
 
     cached_results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
-    cached_connection_manager_result = cached_results["ConnectionManager"]
+    cached_connection_manager_results = cached_results["ConnectionManager"]
+    assert isinstance(cached_connection_manager_results, list)
+    cached_connection_manager_result = cached_connection_manager_results[0]
     assert isinstance(cached_connection_manager_result, MatchedClass)
     assert [method.original.name for method in cached_connection_manager_result.matched_methods] == ["read"]
     assert [field.original.name for field in cached_connection_manager_result.matched_fields] == ["counter"]
@@ -156,7 +169,10 @@ def test_analyze_dynamic_name_captures_readable_name(tmp_path: Path, monkeypatch
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
-    result = results["UnknownToStringClass"]
+    result_entries = results["UnknownToStringClass"]
+    assert isinstance(result_entries, list)
+    assert len(result_entries) == 1
+    result = result_entries[0]
     assert isinstance(result, MatchedClass)
     assert result.original.name == "ConnectionManager"
     assert result.new.to_java_representation() == "Lcom/example/a;"
@@ -272,12 +288,16 @@ def test_analyze_dynamic_name_cache_round_trip(tmp_path: Path, monkeypatch: pyte
     ]
 
     first = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
-    first_result = first["UnknownToStringClass"]
+    first_entries = first["UnknownToStringClass"]
+    assert isinstance(first_entries, list)
+    first_result = first_entries[0]
     assert isinstance(first_result, MatchedClass)
     assert first_result.original.name == "ConnectionManager"
 
     cached = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
-    cached_result = cached["UnknownToStringClass"]
+    cached_entries = cached["UnknownToStringClass"]
+    assert isinstance(cached_entries, list)
+    cached_result = cached_entries[0]
     assert isinstance(cached_result, MatchedClass)
     assert cached_result.original.name == "ConnectionManager"
     assert cached_result.new.to_java_representation() == "Lcom/example/a;"
@@ -323,7 +343,10 @@ def test_analyze_dynamic_name_strips_whitespace_and_collapses_captures(
     ]
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
-    result = results["UnknownToStringClass"]
+    result_entries = results["UnknownToStringClass"]
+    assert isinstance(result_entries, list)
+    assert len(result_entries) == 1
+    result = result_entries[0]
     assert isinstance(result, MatchedClass)
     assert result.original.name == "ConnectionManager"
 
@@ -437,11 +460,15 @@ def test_analyze_dynamic_name_macro_reference_from_other_definition(
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
-    dynamic_result = results["UnknownToStringClass"]
+    dynamic_entries = results["UnknownToStringClass"]
+    assert isinstance(dynamic_entries, list)
+    dynamic_result = dynamic_entries[0]
     assert isinstance(dynamic_result, MatchedClass)
     assert dynamic_result.original.name == "ConnectionManager"
     assert dynamic_result.new.to_java_representation() == "Lcom/example/a;"
 
-    network_result = results["NetworkHandler"]
+    network_entries = results["NetworkHandler"]
+    assert isinstance(network_entries, list)
+    network_result = network_entries[0]
     assert isinstance(network_result, MatchedClass)
     assert network_result.new.to_java_representation() == "Lcom/example/n;"

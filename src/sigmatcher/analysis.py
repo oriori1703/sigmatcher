@@ -48,6 +48,13 @@ else:
     from typing_extensions import override
 
 
+# Each analyzer produces zero or more results. Static analyzers always produce
+# exactly one entry; dynamic analyzers may produce 0+ entries. The dict value
+# is either the list of matches or the SigmatcherError raised while computing
+# it.
+ResultsMapType = dict[str, list[Result] | SigmatcherError]
+
+
 class ProgressObserver(ABC):
     @abstractmethod
     def on_start(self, total_analyzers: int) -> None:
@@ -93,14 +100,19 @@ def resolve_macro(result: Result, macro_statement: MacroStatement, analyzer_name
 
 
 def resolve_signatures(
-    signatures: tuple[Signature, ...], results: dict[str, Result | SigmatcherError], analyzer_name: str
+    signatures: tuple[Signature, ...], results: ResultsMapType, analyzer_name: str
 ) -> tuple[Signature, ...]:
     resolved_signatures: list[Signature] = []
     for signature in signatures:
         resolved_signature = signature
         for macro_statement in signature.get_macro_definitions():
-            result = results[macro_statement.subject]
-            assert not isinstance(result, Exception)
+            result_entries = results[macro_statement.subject]
+            assert not isinstance(result_entries, Exception)
+            # Macros are forbidden against dynamic-name definitions (see the
+            # validation pass that runs after merge_definitions_groups), so the
+            # referenced result is always a singleton list.
+            assert len(result_entries) == 1
+            result = result_entries[0]
             resolved_macro = resolve_macro(result, macro_statement, analyzer_name)
             resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
         resolved_signatures.append(resolved_signature)
@@ -114,7 +126,7 @@ class Analyzer(ABC):
     app_version: str | None
 
     @abstractmethod
-    def analyze(self, results: dict[str, Result | SigmatcherError]) -> Result:
+    def analyze(self, results: ResultsMapType) -> list[Result]:
         pass
 
     def check_match_count(
@@ -132,7 +144,7 @@ class Analyzer(ABC):
     def dependencies(self) -> set[str]:
         return self._get_dependencies()
 
-    def check_dependencies(self, results: dict[str, Result | SigmatcherError]) -> None:
+    def check_dependencies(self, results: ResultsMapType) -> None:
         failed_dependencies: list[str] = []
         for dependency_name in self.dependencies:
             child_result = results[dependency_name]
@@ -142,16 +154,16 @@ class Analyzer(ABC):
         if failed_dependencies:
             raise FailedDependencyError(self.name, failed_dependencies)
 
-    def get_resolved_signatures(self, results: dict[str, Result | SigmatcherError]) -> tuple[Signature, ...]:
+    def get_resolved_signatures(self, results: ResultsMapType) -> tuple[Signature, ...]:
         return resolve_signatures(self.get_signatures_for_version(), results, self.name)
 
     def get_signatures_for_version(self) -> tuple[Signature, ...]:
         return self.definition.get_signatures_for_version(self.app_version)
 
-    def _get_cache_content_to_hash(self, results: dict[str, Result | SigmatcherError]) -> bytes:
+    def _get_cache_content_to_hash(self, results: ResultsMapType) -> bytes:
         return SIGNATURES_TYPE_ADAPTER.dump_json(self.get_resolved_signatures(results))
 
-    def get_cache_key(self, results: dict[str, Result | SigmatcherError]) -> str:
+    def get_cache_key(self, results: ResultsMapType) -> str:
         analyzer_content_hash = hashlib.sha256(self._get_cache_content_to_hash(results))
         return f"v4_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
@@ -163,8 +175,8 @@ class Analyzer(ABC):
     def __repr__(self) -> str:
         return self.name
 
-    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:
-        return cached_result
+    def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
+        return list(cached_results)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -173,7 +185,7 @@ class ClassAnalyzer(Analyzer):
     search_root: Path
 
     @override
-    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
+    def analyze(self, results: ResultsMapType) -> list[Result]:
         signatures = list(self.get_resolved_signatures(results))
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
@@ -204,9 +216,16 @@ class ClassAnalyzer(Analyzer):
             readable_name = self._capture_dynamic_name(match, signatures)
 
         original_class = Class(name=readable_name, package=self.definition.package or new_class.package)
-        return MatchedClass(
-            original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[], exports=[]
-        )
+        return [
+            MatchedClass(
+                original=original_class,
+                new=new_class,
+                smali_file=match,
+                matched_methods=[],
+                matched_fields=[],
+                exports=[],
+            )
+        ]
 
     def _capture_dynamic_name(self, match: Path, signatures: Sequence[Signature]) -> str:
         # The model-level validator only sees the full signature tuple. The runtime
@@ -239,21 +258,26 @@ class ClassAnalyzer(Analyzer):
         return next(iter(captures))
 
     @override
-    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
-        assert isinstance(cached_result, MatchedClass)
-        assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
+    def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
+        rebuilt: list[Result] = []
+        for cached_result in cached_results:
+            assert isinstance(cached_result, MatchedClass)
+            assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
 
-        readable_name = cached_result.original.name if self.definition.dynamic_name else self.definition.name
-        original_class = Class(name=readable_name, package=self.definition.package or cached_result.new.package)
+            readable_name = cached_result.original.name if self.definition.dynamic_name else self.definition.name
+            original_class = Class(name=readable_name, package=self.definition.package or cached_result.new.package)
 
-        return MatchedClass(
-            original=original_class,
-            new=cached_result.new,
-            matched_methods=[],
-            matched_fields=[],
-            exports=[],
-            smali_file=cached_result.smali_file,
-        )
+            rebuilt.append(
+                MatchedClass(
+                    original=original_class,
+                    new=cached_result.new,
+                    matched_methods=[],
+                    matched_fields=[],
+                    exports=[],
+                    smali_file=cached_result.smali_file,
+                )
+            )
+        return rebuilt
 
 
 @dataclasses.dataclass(frozen=True)
@@ -265,7 +289,7 @@ class ChildAnalyzer(Analyzer, ABC):
         return super()._get_dependencies() | {self.parent.name}
 
     @override
-    def _get_cache_content_to_hash(self, results: dict[str, Result | SigmatcherError]) -> bytes:
+    def _get_cache_content_to_hash(self, results: ResultsMapType) -> bytes:
         parent_cache_key = self.parent.get_cache_key(results).encode()
         return super()._get_cache_content_to_hash(results) + parent_cache_key
 
@@ -273,13 +297,21 @@ class ChildAnalyzer(Analyzer, ABC):
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
         raise NotImplementedError()
 
-    @override
-    def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> Result:
-        parent_class_result = results[self.parent.name]
+    def _get_parent_match(self, results: ResultsMapType) -> MatchedClass:
+        parent_class_results = results[self.parent.name]
+        assert not isinstance(parent_class_results, Exception)
+        assert len(parent_class_results) == 1
+        parent_class_result = parent_class_results[0]
         assert isinstance(parent_class_result, MatchedClass)
-        self._update_parent_with_child_result(cached_result, parent_class_result)
+        return parent_class_result
 
-        return super().from_cache(cached_result, results)
+    @override
+    def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
+        parent_class_result = self._get_parent_match(results)
+        for cached_result in cached_results:
+            self._update_parent_with_child_result(cached_result, parent_class_result)
+
+        return super().from_cache(cached_results, results)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -287,9 +319,8 @@ class FieldAnalyzer(ChildAnalyzer):
     definition: FieldDefinition
 
     @override
-    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedField:
-        parent_class_result = results[self.parent.name]
-        assert isinstance(parent_class_result, MatchedClass)
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        parent_class_result = self._get_parent_match(results)
         assert isinstance(parent_class_result.smali_file, Path)
 
         signatures = self.get_resolved_signatures(results)
@@ -309,7 +340,7 @@ class FieldAnalyzer(ChildAnalyzer):
         original_field = Field(name=self.definition.name, type=new_field.type)
         matched_field = MatchedField(original=original_field, new=new_field)
         self._update_parent_with_child_result(matched_field, parent_class_result)
-        return matched_field
+        return [matched_field]
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -327,9 +358,8 @@ class MethodAnalyzer(ChildAnalyzer):
     definition: MethodDefinition
 
     @override
-    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedMethod:
-        parent_class_result = results[self.parent.name]
-        assert isinstance(parent_class_result, MatchedClass)
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        parent_class_result = self._get_parent_match(results)
         assert isinstance(parent_class_result.smali_file, Path)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
@@ -356,7 +386,7 @@ class MethodAnalyzer(ChildAnalyzer):
         )
         matched_method = MatchedMethod(original=original_method, new=new_method)
         self._update_parent_with_child_result(matched_method, parent_class_result)
-        return matched_method
+        return [matched_method]
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -374,9 +404,8 @@ class ExportAnalyzer(ChildAnalyzer):
     definition: ExportDefinition
 
     @override
-    def analyze(self, results: dict[str, Result | SigmatcherError]) -> MatchedExport:
-        parent_class_result = results[self.parent.name]
-        assert isinstance(parent_class_result, MatchedClass)
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        parent_class_result = self._get_parent_match(results)
         assert isinstance(parent_class_result.smali_file, Path)
 
         signatures = self.get_resolved_signatures(results)
@@ -393,7 +422,7 @@ class ExportAnalyzer(ChildAnalyzer):
 
         result = MatchedExport.from_value(self.definition.name, export_value)
         self._update_parent_with_child_result(result, parent_class_result)
-        return result
+        return [result]
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -439,9 +468,7 @@ def create_analyzers(
     return name_to_analyzer
 
 
-def sort_analyzers(
-    name_to_analyzer: dict[str, Analyzer], results: dict[str, Result | SigmatcherError]
-) -> Iterable[str]:
+def sort_analyzers(name_to_analyzer: dict[str, Analyzer], results: ResultsMapType) -> Iterable[str]:
     analyzers_set = set(name_to_analyzer.keys())
 
     sorter: graphlib.TopologicalSorter[str] = graphlib.TopologicalSorter()
@@ -461,8 +488,8 @@ def analyze(
     cache: Cache,
     app_version: str | None,
     progress_observer: ProgressObserver | None = None,
-) -> dict[str, Result | SigmatcherError]:
-    results: dict[str, Result | SigmatcherError] = {}
+) -> ResultsMapType:
+    results: ResultsMapType = {}
     name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
     sorted_analyzers = list(sort_analyzers(name_to_analyzer, results))
 
@@ -485,12 +512,12 @@ def analyze(
             cache_key = analyzer.get_cache_key(results)
             cached_result = previous_results_cache.get(cache_key)
             if cached_result is None:
-                result = analyzer.analyze(results)
+                analyzer_results = analyzer.analyze(results)
             else:
-                result = analyzer.from_cache(cached_result, results)
+                analyzer_results = analyzer.from_cache(cached_result, results)
 
-            results[analyzer_name] = result
-            new_results_cache[cache_key] = result
+            results[analyzer_name] = analyzer_results
+            new_results_cache[cache_key] = analyzer_results
 
             if analyzer.definition.exclude:
                 excluded_results.append(analyzer_name)

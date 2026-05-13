@@ -16,7 +16,7 @@ else:
 
 DEFAULT_CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
 
-ResultsCacheType: TypeAlias = dict[str, Result]
+ResultsCacheType: TypeAlias = dict[str, list[Result]]
 
 
 @dataclass

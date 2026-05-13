@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from sigmatcher.analysis import (
+    ResultsMapType,
     create_analyzers,
     filter_signature_matches,
     resolve_macro,
@@ -9,8 +10,8 @@ from sigmatcher.analysis import (
     sort_analyzers,
 )
 from sigmatcher.definitions import ClassDefinition, MacroStatement, MethodDefinition, RegexSignature, Signature
-from sigmatcher.errors import InvalidMacroModifierError, MissingDependenciesError, SigmatcherError
-from sigmatcher.results import Class, MatchedClass, Result
+from sigmatcher.errors import InvalidMacroModifierError, MissingDependenciesError
+from sigmatcher.results import Class, MatchedClass
 
 
 def test_filter_signature_matches_intersects_all_signatures() -> None:
@@ -63,14 +64,16 @@ def test_resolve_macro_invalid_modifier_raises() -> None:
 
 def test_resolve_signatures_substitutes_macros() -> None:
     signatures = (RegexSignature(type="regex", signature=re.compile(r"new-instance v0, ${Target.java}")),)
-    results: dict[str, Result | SigmatcherError] = {
-        "Target": MatchedClass(
-            original=Class(name="OldClass", package="com.old"),
-            new=Class(name="NewClass", package="com.new"),
-            matched_methods=[],
-            matched_fields=[],
-            exports=[],
-        )
+    results: ResultsMapType = {
+        "Target": [
+            MatchedClass(
+                original=Class(name="OldClass", package="com.old"),
+                new=Class(name="NewClass", package="com.new"),
+                matched_methods=[],
+                matched_fields=[],
+                exports=[],
+            )
+        ]
     }
 
     resolved = resolve_signatures(signatures, results, "Analyzer")
@@ -92,7 +95,7 @@ def test_create_and_sort_analyzers_handles_missing_dependencies(tmp_path: Path) 
     assert "Main" in analyzers
     assert "Main.methods.run" in analyzers
 
-    results: dict[str, Result | SigmatcherError] = {}
+    results: ResultsMapType = {}
     order = list(sort_analyzers(analyzers, results))
     assert "Main.methods.run" in order
     assert "Main" in order

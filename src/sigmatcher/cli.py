@@ -18,12 +18,13 @@ from rich.tree import Tree
 
 import sigmatcher.analysis
 from sigmatcher import __version__
+from sigmatcher.analysis import ResultsMapType
 from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
 from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.input_paths import validate_input_path
-from sigmatcher.results import MatchedClass, Result
+from sigmatcher.results import MatchedClass
 from sigmatcher.unpack import get_apk_version, unpack_input
 
 if sys.version_info >= (3, 12):
@@ -251,7 +252,7 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
 
 
 def _output_results(
-    results: dict[str, Result | SigmatcherError],
+    results: ResultsMapType,
     output_file: Path | None,
     output_format: MappingFormat,
     output_errors_as_tree: bool,
@@ -263,8 +264,10 @@ def _output_results(
     for analyzer_name, result in results.items():
         if isinstance(result, SigmatcherError):
             failed_results[analyzer_name] = result
-        elif isinstance(result, MatchedClass):
-            successful_results[analyzer_name] = result
+            continue
+        for entry in result:
+            if isinstance(entry, MatchedClass):
+                successful_results[analyzer_name] = entry
 
     _output_successful_results(successful_results, output_file, output_format)
     if not failed_results:
@@ -334,7 +337,7 @@ def analyze(  # noqa: PLR0913
     no_progress: Annotated[
         bool, typer.Option(help="Disable progress bars indicating how much of the analysis has been completed.")
     ] = False,
-) -> dict[str, Result | SigmatcherError]:
+) -> ResultsMapType:
     """
     Analyze an APK input using the provided signatures.
     """

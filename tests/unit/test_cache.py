@@ -22,13 +22,13 @@ def test_get_from_apk_and_cache_read_write(tmp_path: Path) -> None:
         matched_fields=[],
         exports=[],
     )
-    payload: ResultsCacheType = {"key": matched}
+    payload: ResultsCacheType = {"key": [matched]}
 
     cache.cache_dir.mkdir(parents=True)
     cache.write_results_cache(payload)
 
     loaded = cache.get_results_cache()
-    assert loaded["key"].new.name == "New"
+    assert loaded["key"][0].new.name == "New"
 
 
 def test_get_from_input_directory_hash_changes_with_apk_content(tmp_path: Path) -> None:
