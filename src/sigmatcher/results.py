@@ -17,10 +17,14 @@ class Export(pydantic.BaseModel, frozen=True):
 
 class MatchedExport(pydantic.BaseModel, frozen=True):
     new: Export
+    smali_class: "Class | None" = None
+    """For top-level dynamic export definitions, the obfuscated class the export was
+    found in. Used when emitting output formats so the export gets attached to a
+    synthesized holder class entry. None for static / class-scoped exports."""
 
     @classmethod
-    def from_value(cls, name: str, value: str) -> "MatchedExport":
-        return cls(new=Export(name=name, value=value))
+    def from_value(cls, name: str, value: str, smali_class: "Class | None" = None) -> "MatchedExport":
+        return cls(new=Export(name=name, value=value), smali_class=smali_class)
 
 
 class Field(pydantic.BaseModel, frozen=True):
@@ -43,6 +47,9 @@ class Field(pydantic.BaseModel, frozen=True):
 class MatchedField(pydantic.BaseModel, frozen=True):
     original: Field
     new: Field
+    smali_class: "Class | None" = None
+    """For top-level dynamic field definitions, the obfuscated class the field was
+    found in. Used when emitting output formats. None for static / class-scoped fields."""
 
 
 class Method(pydantic.BaseModel, frozen=True):
@@ -67,6 +74,9 @@ class Method(pydantic.BaseModel, frozen=True):
 class MatchedMethod(pydantic.BaseModel, frozen=True):
     original: Method
     new: Method
+    smali_class: "Class | None" = None
+    """For top-level dynamic method definitions, the obfuscated class the method was
+    found in. Used when emitting output formats. None for static / class-scoped methods."""
 
 
 class Class(pydantic.BaseModel, frozen=True):
@@ -110,5 +120,9 @@ class MatchedClass(pydantic.BaseModel):
     def __hash__(self) -> int:
         return hash((self.original, self.new))
 
+
+MatchedExport.model_rebuild()
+MatchedField.model_rebuild()
+MatchedMethod.model_rebuild()
 
 Result: TypeAlias = MatchedClass | MatchedField | MatchedMethod | MatchedExport

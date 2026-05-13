@@ -6,6 +6,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
 from functools import cache, cached_property
 from pathlib import Path
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    import re
 
 from sigmatcher.cache import Cache, ResultsCacheType
 from sigmatcher.definitions import (
@@ -19,6 +23,10 @@ from sigmatcher.definitions import (
     MethodDefinition,
     Signature,
     SignatureMatch,
+    TopLevelDefinition,
+    TopLevelExportDefinition,
+    TopLevelFieldDefinition,
+    TopLevelMethodDefinition,
 )
 from sigmatcher.errors import (
     FailedDependencyError,
@@ -214,14 +222,14 @@ class ClassAnalyzer(Analyzer, ABC):
         return signatures, class_matches
 
     @staticmethod
-    def _read_new_class(match: Path) -> Class:
+    def read_new_class(match: Path) -> Class:
         with match.open() as f:
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
         return Class.from_java_representation(raw_class_name)
 
     def _build_matched_class(self, match: Path, readable_name: str) -> MatchedClass:
-        new_class = self._read_new_class(match)
+        new_class = self.read_new_class(match)
         original_class = Class(name=readable_name, package=self.definition.package or new_class.package)
         return MatchedClass(
             original=original_class,
@@ -473,39 +481,242 @@ class ExportAnalyzer(ChildAnalyzer):
         return f"{self.parent.name}.exports.{self.definition.name}"
 
 
+@dataclasses.dataclass(frozen=True)
+class TopLevelDynamicAnalyzer(Analyzer, ABC):
+    """Common base for top-level corpus-scanning method/field/export analyzers."""
+
+    search_root: Path
+    capture_group_name: ClassVar[str] = ""
+
+    def _resolve_single_signature(self, results: ResultsMapType) -> Signature:
+        signatures = self.get_resolved_signatures(results)
+        if len(signatures) == 0:
+            raise NoSignaturesError(self.name)
+        if len(signatures) > 1:
+            raise TooManySignaturesError(self.name, signatures)
+        return signatures[0]
+
+    def _capture_axis_name(self, match: "re.Match[str]") -> str | None:
+        """Return the stripped axis-specific capture, or None if absent/empty."""
+        try:
+            captured = match.group(self.capture_group_name).strip()
+        except IndexError:
+            return None
+        return captured or None
+
+    def _readable_name_for(self, match: "re.Match[str]", *, dynamic_name: bool) -> str | None:
+        if not dynamic_name:
+            return self.definition.name
+        return self._capture_axis_name(match)
+
+    def _enforce_single_match_for_now(self, matches: list[Result], signatures: tuple[Signature, ...]) -> None:
+        # TODO: lift this restriction in commit 6 when 0+ dynamic matches become legal.
+        if len(matches) == 0:
+            raise NoMatchesError(self.name, signatures)
+        if len(matches) > 1:
+            seen = self._distinct_capture_names(matches)
+            raise TooManyMatchesError[str](self.name, signatures, seen)
+
+    @abstractmethod
+    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
+        raise NotImplementedError()
+
+
+@dataclasses.dataclass(frozen=True)
+class TopLevelDynamicMethodAnalyzer(TopLevelDynamicAnalyzer):
+    """Scan the full smali corpus for methods matching a top-level method definition.
+
+    The readable method name comes from a `(?P<method_name>...)` capture group. Each
+    occurrence becomes its own MatchedMethod, tagged with the obfuscated parent class
+    so output formats can synthesize a holder class entry.
+    """
+
+    definition: TopLevelMethodDefinition
+    capture_group_name: ClassVar[str] = "method_name"
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        signature = self._resolve_single_signature(results)
+        matches: list[Result] = list(self._scan_corpus(signature))
+        self._enforce_single_match_for_now(matches, (signature,))
+        return matches
+
+    def _scan_corpus(self, signature: Signature) -> Iterable[MatchedMethod]:
+        if not isinstance(signature, BaseRegexSignature):
+            return
+        for smali_file in get_smali_files(self.search_root):
+            smali_class = ClassAnalyzer.read_new_class(smali_file)
+            for method_block in _iter_method_blocks(smali_file.read_text()):
+                yield from self._yield_method_match(signature, method_block, smali_class)
+
+    def _yield_method_match(
+        self, signature: BaseRegexSignature, method_block: str, smali_class: Class
+    ) -> Iterable[MatchedMethod]:
+        regex = signature.signature
+        method_definition_line, _, _ = method_block.partition("\n")
+        _, _, raw_method_name = method_definition_line.rpartition(" ")
+        new_method = Method.from_java_representation(raw_method_name)
+        for match in regex.finditer(method_block):
+            readable_name = self._readable_name_for(match, dynamic_name=self.definition.dynamic_name)
+            if readable_name is None:
+                continue
+            original_method = Method(
+                name=readable_name,
+                argument_types=new_method.argument_types,
+                return_type=new_method.return_type,
+            )
+            yield MatchedMethod(original=original_method, new=new_method, smali_class=smali_class)
+            # One match per method block — additional captures inside the same method
+            # would be duplicate-emitting the same MatchedMethod and confuse downstream
+            # collision detection.
+            return
+
+    @override
+    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
+        return {m.original.name for m in matches if isinstance(m, MatchedMethod)}
+
+
+@dataclasses.dataclass(frozen=True)
+class TopLevelDynamicFieldAnalyzer(TopLevelDynamicAnalyzer):
+    """Scan the full smali corpus for fields matching a top-level field definition."""
+
+    definition: TopLevelFieldDefinition
+    capture_group_name: ClassVar[str] = "field_name"
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        signature = self._resolve_single_signature(results)
+        matches: list[Result] = list(self._scan_corpus(signature))
+        self._enforce_single_match_for_now(matches, (signature,))
+        return matches
+
+    def _scan_corpus(self, signature: Signature) -> Iterable[MatchedField]:
+        if not isinstance(signature, BaseRegexSignature):
+            return
+        for smali_file in get_smali_files(self.search_root):
+            smali_class = ClassAnalyzer.read_new_class(smali_file)
+            for match in signature.signature.finditer(smali_file.read_text()):
+                yielded = self._build_field(match, smali_class)
+                if yielded is not None:
+                    yield yielded
+
+    def _build_field(self, match: "re.Match[str]", smali_class: Class) -> MatchedField | None:
+        raw_field = _captured_match_or_full(match)
+        new_field = Field.from_java_representation(raw_field)
+        readable_name = self._readable_name_for(match, dynamic_name=self.definition.dynamic_name)
+        if readable_name is None:
+            return None
+        original_field = Field(name=readable_name, type=new_field.type)
+        return MatchedField(original=original_field, new=new_field, smali_class=smali_class)
+
+    @override
+    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
+        return {m.original.name for m in matches if isinstance(m, MatchedField)}
+
+
+@dataclasses.dataclass(frozen=True)
+class TopLevelDynamicExportAnalyzer(TopLevelDynamicAnalyzer):
+    """Scan the full smali corpus for exports matching a top-level export definition."""
+
+    definition: TopLevelExportDefinition
+    capture_group_name: ClassVar[str] = "export_name"
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        signature = self._resolve_single_signature(results)
+        matches: list[Result] = list(self._scan_corpus(signature))
+        self._enforce_single_match_for_now(matches, (signature,))
+        return matches
+
+    def _scan_corpus(self, signature: Signature) -> Iterable[MatchedExport]:
+        if not isinstance(signature, BaseRegexSignature):
+            return
+        for smali_file in get_smali_files(self.search_root):
+            smali_class = ClassAnalyzer.read_new_class(smali_file)
+            for match in signature.signature.finditer(smali_file.read_text()):
+                yielded = self._build_export(match, smali_class)
+                if yielded is not None:
+                    yield yielded
+
+    def _build_export(self, match: "re.Match[str]", smali_class: Class) -> MatchedExport | None:
+        export_value = _captured_match_or_full(match)
+        readable_name = self._readable_name_for(match, dynamic_name=self.definition.dynamic_name)
+        if readable_name is None:
+            return None
+        return MatchedExport.from_value(readable_name, export_value, smali_class=smali_class)
+
+    @override
+    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
+        return {m.new.name for m in matches if isinstance(m, MatchedExport)}
+
+
+def _iter_method_blocks(smali_text: str) -> Iterable[str]:
+    """Split a smali file's contents into individual method blocks."""
+    raw_methods = smali_text.split(".method")[1:]
+    for raw_method in raw_methods:
+        yield ".method" + raw_method
+
+
+def _captured_match_or_full(match: "re.Match[str]") -> str:
+    """Return `match.group("match")` if defined, else the full matched string."""
+    try:
+        return match.group("match")
+    except IndexError:
+        return match.group(0)
+
+
+def _create_class_analyzers(
+    class_definition: ClassDefinition, search_root: Path, app_version: str | None
+) -> Iterable[tuple[str, Analyzer]]:
+    class_analyzer: ClassAnalyzer
+    if class_definition.dynamic_name:
+        class_analyzer = DynamicClassAnalyzer(class_definition, app_version, search_root)
+    else:
+        class_analyzer = StaticClassAnalyzer(class_definition, app_version, search_root)
+    yield class_definition.name, class_analyzer
+
+    for method_definition in class_definition.methods:
+        if method_definition.is_in_version_range(app_version):
+            method_analyzer = MethodAnalyzer(method_definition, app_version, parent=class_analyzer)
+            yield method_analyzer.name, method_analyzer
+
+    for field_definition in class_definition.fields:
+        if field_definition.is_in_version_range(app_version):
+            field_analyzer = FieldAnalyzer(field_definition, app_version, parent=class_analyzer)
+            yield field_analyzer.name, field_analyzer
+
+    for export_definition in class_definition.exports:
+        if export_definition.is_in_version_range(app_version):
+            export_analyzer = ExportAnalyzer(export_definition, app_version, parent=class_analyzer)
+            yield export_analyzer.name, export_analyzer
+
+
+def _create_top_level_analyzer(
+    top_level_definition: TopLevelDefinition, search_root: Path, app_version: str | None
+) -> Analyzer:
+    if isinstance(top_level_definition, TopLevelMethodDefinition):
+        return TopLevelDynamicMethodAnalyzer(top_level_definition, app_version, search_root)
+    if isinstance(top_level_definition, TopLevelFieldDefinition):
+        return TopLevelDynamicFieldAnalyzer(top_level_definition, app_version, search_root)
+    assert isinstance(top_level_definition, TopLevelExportDefinition)
+    return TopLevelDynamicExportAnalyzer(top_level_definition, app_version, search_root)
+
+
 def create_analyzers(
-    definitions: Sequence[ClassDefinition], search_root: Path, app_version: str | None
+    definitions: Sequence[TopLevelDefinition], search_root: Path, app_version: str | None
 ) -> dict[str, Analyzer]:
     canonical_search_root = search_root.resolve()
     name_to_analyzer: dict[str, Analyzer] = {}
-    for class_definition in definitions:
-        if not class_definition.is_in_version_range(app_version):
+    for top_level_definition in definitions:
+        if not top_level_definition.is_in_version_range(app_version):
             continue
 
-        class_analyzer: ClassAnalyzer
-        if class_definition.dynamic_name:
-            class_analyzer = DynamicClassAnalyzer(class_definition, app_version, canonical_search_root)
+        if isinstance(top_level_definition, ClassDefinition):
+            for name, analyzer in _create_class_analyzers(top_level_definition, canonical_search_root, app_version):
+                name_to_analyzer[name] = analyzer
         else:
-            class_analyzer = StaticClassAnalyzer(class_definition, app_version, canonical_search_root)
-        name_to_analyzer[class_definition.name] = class_analyzer
-
-        for method_definition in class_definition.methods:
-            if not method_definition.is_in_version_range(app_version):
-                continue
-            method_analyzer = MethodAnalyzer(method_definition, app_version, parent=class_analyzer)
-            name_to_analyzer[method_analyzer.name] = method_analyzer
-
-        for field_definition in class_definition.fields:
-            if not field_definition.is_in_version_range(app_version):
-                continue
-            field_analyzer = FieldAnalyzer(field_definition, app_version, parent=class_analyzer)
-            name_to_analyzer[field_analyzer.name] = field_analyzer
-
-        for export_definition in class_definition.exports:
-            if not export_definition.is_in_version_range(app_version):
-                continue
-            export_analyzer = ExportAnalyzer(export_definition, app_version, parent=class_analyzer)
-            name_to_analyzer[export_analyzer.name] = export_analyzer
+            analyzer = _create_top_level_analyzer(top_level_definition, canonical_search_root, app_version)
+            name_to_analyzer[analyzer.name] = analyzer
 
     return name_to_analyzer
 
@@ -526,7 +737,7 @@ def sort_analyzers(name_to_analyzer: dict[str, Analyzer], results: ResultsMapTyp
 
 
 def analyze(
-    definitions: Sequence[ClassDefinition],
+    definitions: Sequence[TopLevelDefinition],
     cache: Cache,
     app_version: str | None,
     progress_observer: ProgressObserver | None = None,

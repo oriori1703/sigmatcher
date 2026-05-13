@@ -366,10 +366,6 @@ def analyze(  # noqa: PLR0913
         progress_console.quiet = True
 
     merged_definitions = _read_definitions(signatures)
-    # Top-level non-class definitions are validated and round-tripped, but not yet wired
-    # into the analyzer here — the dynamic Method/Field/Export top-level analyzers ship
-    # in a follow-up commit. Filter to class defs for now so analysis still runs.
-    class_definitions = tuple(d for d in merged_definitions if isinstance(d, ClassDefinition))
     cache = Cache.get_from_input(cache_dir, app_input)
     with progress_console.status("Unpacking APK..."):
         unpack_input(apktool, app_input, cache, suppress_output=not debug)
@@ -393,7 +389,7 @@ def analyze(  # noqa: PLR0913
         observer = RichProgressObserver(analysis_progress)
 
     with analysis_progress:
-        results = sigmatcher.analysis.analyze(class_definitions, cache, apk_version, observer)
+        results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
 
     _output_results(results, output_file, output_format, tree_errors, debug)
     return results
