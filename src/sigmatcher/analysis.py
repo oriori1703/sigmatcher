@@ -524,11 +524,20 @@ class TopLevelDynamicAnalyzer(Analyzer, ABC):
         return signatures[0]
 
     def _capture_axis_name(self, match: "re.Match[str]") -> str | None:
-        """Return the stripped axis-specific capture, or None if absent/empty."""
+        """Return the stripped axis-specific capture, or None if absent/empty.
+
+        A named group inside an alternation that didn't participate in the match
+        (e.g. `sentinel|(?P<method_name>FOO)` when the input matched `sentinel`)
+        returns None from `match.group(...)`. None and empty/whitespace-only
+        captures are treated as "no axis name" rather than raising.
+        """
         try:
-            captured = match.group(self.capture_group_name).strip()
+            captured_raw = match.group(self.capture_group_name)
         except IndexError:
             return None
+        if captured_raw is None:
+            return None
+        captured = captured_raw.strip()
         return captured or None
 
     def _readable_name_for(self, match: "re.Match[str]", *, dynamic_name: bool) -> str | None:

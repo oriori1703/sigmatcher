@@ -602,6 +602,110 @@ def test_top_level_dynamic_export_def_corpus_scan(tmp_path: Path, monkeypatch: p
 
 
 @pytest.mark.integration
+def test_top_level_dynamic_method_non_participating_capture_group_yields_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin the BLOCKER-2 fix: a method_name group inside an alternation that the actual
+    input matches via the non-capturing alternative must not crash with AttributeError."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "sentinel"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelMethodDefinition(
+            name="TolerantMethod",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'const-string v\d+, "(?:sentinel|(?P<method_name>FOO))"',
+                        "count": "0-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    assert results["TolerantMethod"] == []
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_field_non_participating_capture_group_yields_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".field private final sentinel:I\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelFieldDefinition(
+            name="TolerantField",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r"\.field private final (?:sentinel|(?P<field_name>foo)):I",
+                        "count": "0-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    assert results["TolerantField"] == []
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_export_non_participating_capture_group_yields_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        '    const-string v0, "SENTINEL_TOKEN"\n',
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelExportDefinition(
+            name="TolerantExport",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'"(?P<match>SENTINEL_TOKEN|(?P<export_name>FEATURE_\w+))"',
+                        "count": "0-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    assert results["TolerantExport"] == []
+
+
+@pytest.mark.integration
 def test_dynamic_def_zero_matches_is_not_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A dynamic def that matches nothing yields an empty list, not an exception (decision #8)."""
     cache, apktool_dir = _setup_corpus(tmp_path)
