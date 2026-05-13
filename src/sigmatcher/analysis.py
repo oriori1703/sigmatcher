@@ -201,40 +201,42 @@ class ClassAnalyzer(Analyzer):
 
         readable_name = self.definition.name
         if self.definition.dynamic_name:
-            # The model-level validator only sees the full signature tuple. The runtime
-            # subset is version-filtered, so a definition with a non-capturing signature
-            # for old versions and a capturing one for new versions can pass validation
-            # yet have no class_name group applicable to the current run. Surface this
-            # as a dedicated error instead of the misleading NoMatchesError that the
-            # capture loop would otherwise raise.
-            if not any(
-                isinstance(signature, BaseRegexSignature) and signature.has_class_name_group()
-                for signature in signatures
-            ):
-                raise MissingClassNameGroupError(self.name, self.app_version)
-
-            raw_class = match.read_text()
-            captures: set[str] = set()
-            for signature in signatures:
-                if isinstance(signature, BaseRegexSignature):
-                    captures.update(signature.capture_class_name(raw_class))
-            # Surrounding whitespace in a capture is treated as insignificant: " Foo"
-            # and "Foo" collapse to "Foo", and a capture that is empty / whitespace-only
-            # is dropped. This matches the realistic smali case where a leading space
-            # may end up inside a tolerant regex group, and prevents spurious
-            # TooManyMatchesError when the same readable name is captured twice with
-            # different ambient whitespace. See the README "Dynamic Class Names" section.
-            captures = {c.strip() for c in captures if c and c.strip()}
-            if not captures:
-                raise NoMatchesError(self.name, tuple(signatures))
-            if len(captures) > 1:
-                raise TooManyMatchesError[str](self.name, tuple(signatures), captures)
-            readable_name = next(iter(captures))
+            readable_name = self._capture_dynamic_name(match, signatures)
 
         original_class = Class(name=readable_name, package=self.definition.package or new_class.package)
         return MatchedClass(
             original=original_class, new=new_class, smali_file=match, matched_methods=[], matched_fields=[], exports=[]
         )
+
+    def _capture_dynamic_name(self, match: Path, signatures: Sequence[Signature]) -> str:
+        # The model-level validator only sees the full signature tuple. The runtime
+        # subset is version-filtered, so a definition with a non-capturing signature
+        # for old versions and a capturing one for new versions can pass validation
+        # yet have no class_name group applicable to the current run. Surface this
+        # as a dedicated error instead of the misleading NoMatchesError that the
+        # capture loop would otherwise raise.
+        if not any(
+            isinstance(signature, BaseRegexSignature) and signature.has_class_name_group() for signature in signatures
+        ):
+            raise MissingClassNameGroupError(self.name, self.app_version)
+
+        raw_class = match.read_text()
+        captures: set[str] = set()
+        for signature in signatures:
+            if isinstance(signature, BaseRegexSignature):
+                captures.update(signature.capture_class_name(raw_class))
+        # Surrounding whitespace in a capture is treated as insignificant: " Foo"
+        # and "Foo" collapse to "Foo", and a capture that is empty / whitespace-only
+        # is dropped. This matches the realistic smali case where a leading space
+        # may end up inside a tolerant regex group, and prevents spurious
+        # TooManyMatchesError when the same readable name is captured twice with
+        # different ambient whitespace. See the README "Dynamic Class Names" section.
+        captures = {c.strip() for c in captures if c and c.strip()}
+        if not captures:
+            raise NoMatchesError(self.name, tuple(signatures))
+        if len(captures) > 1:
+            raise TooManyMatchesError[str](self.name, tuple(signatures), captures)
+        return next(iter(captures))
 
     @override
     def from_cache(self, cached_result: Result, results: dict[str, Result | SigmatcherError]) -> MatchedClass:
