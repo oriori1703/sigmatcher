@@ -27,6 +27,7 @@ from sigmatcher.definitions import (
     TopLevelExportDefinition,
     TopLevelFieldDefinition,
     TopLevelMethodDefinition,
+    validate_definitions,
 )
 from sigmatcher.errors import (
     ChildFailedForParentError,
@@ -39,6 +40,7 @@ from sigmatcher.errors import (
     SigmatcherError,
     TooManyMatchesError,
     TooManySignaturesError,
+    UnexpectedMultiResultMacroError,
 )
 from sigmatcher.results import (
     Class,
@@ -119,8 +121,12 @@ def resolve_signatures(
             assert not isinstance(result_entries, Exception)
             # Macros are forbidden against dynamic-name definitions (see the
             # validation pass that runs after merge_definitions_groups), so the
-            # referenced result is always a singleton list.
-            assert len(result_entries) == 1
+            # referenced result must be a singleton list. Anything else means the
+            # upstream validator was skipped — raise a real SigmatcherError so the
+            # orchestrator can record the failure instead of crashing with
+            # AssertionError on a code path users can reach via the programmatic API.
+            if len(result_entries) != 1:
+                raise UnexpectedMultiResultMacroError(analyzer_name, macro_statement.subject, len(result_entries))
             result = result_entries[0]
             resolved_macro = resolve_macro(result, macro_statement, analyzer_name)
             resolved_signature = resolved_signature.resolve_macro(macro_statement, resolved_macro)
@@ -775,6 +781,11 @@ def analyze(
     app_version: str | None,
     progress_observer: ProgressObserver | None = None,
 ) -> ResultsMapType:
+    # Cross-definition validation (e.g. forbid macros pointing at dynamic defs) lives
+    # in `validate_definitions` and is also called by the CLI's `_read_definitions`.
+    # Call it here too so programmatic callers using `sigmatcher.analysis.analyze`
+    # directly cannot bypass the rule and crash later on AssertionError.
+    validate_definitions(definitions)
     results: ResultsMapType = {}
     name_to_analyzer = create_analyzers(definitions, cache.get_apktool_cache_dir(), app_version)
     sorted_analyzers = list(sort_analyzers(name_to_analyzer, results))

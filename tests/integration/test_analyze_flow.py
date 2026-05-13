@@ -425,6 +425,50 @@ def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
     assert result.app_version == "1.0.0"
 
 
+@pytest.mark.integration
+def test_programmatic_analyze_calls_validate_definitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Programmatic callers using sigmatcher.analysis.analyze directly must not be able
+    to bypass the dynamic-macro validator. Pre-fix, the CLI's _read_definitions wrapper
+    was the only validation gate; calling analyze() with a macro-to-dynamic definition
+    set would slip past validation and crash with a bare AssertionError downstream."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "ConnectionManager{state=connected"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="UnknownToStringClass",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature(
+                    type="regex",
+                    signature=re.compile(r'"(?P<class_name>\w+)\{state='),
+                ),
+            ),
+        ),
+        ClassDefinition(
+            name="NetworkHandler",
+            signatures=(
+                RegexSignature(
+                    type="regex",
+                    signature=re.compile(r"new-instance v\d+, ${UnknownToStringClass.java}"),
+                ),
+            ),
+        ),
+    ]
+
+    with pytest.raises(MacroPointsToDynamicError):
+        _ = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+
+
 def test_macro_points_at_dynamic_def_load_error() -> None:
     """A second ClassDefinition references a dynamic-name class via ${X.java}.
 
