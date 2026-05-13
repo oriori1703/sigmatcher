@@ -25,6 +25,7 @@ from sigmatcher.definitions import (
     ClassDefinition,
     TopLevelDefinition,
     merge_definitions_groups,
+    validate_definitions,
 )
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
@@ -218,7 +219,11 @@ def _read_definitions(signatures: list[Path]) -> tuple[TopLevelDefinition, ...]:
                 other_defs.append(definition)
         class_groups.append(tuple(per_file_classes))
     merged_classes = merge_definitions_groups(class_groups)
-    return (*merged_classes, *other_defs)
+    merged = (*merged_classes, *other_defs)
+    # Cross-definition checks (forbid macros pointing at dynamic defs, etc.) run after
+    # merging so they see the final shape the analyzer will consume.
+    validate_definitions(merged)
+    return merged
 
 
 def _output_successful_results(

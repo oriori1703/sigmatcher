@@ -448,6 +448,60 @@ def merge_definition(def1: TDefinition, def2: TDefinition) -> TDefinition:
     return def1.model_copy(update={"signatures": signatures})
 
 
+def _collect_dynamic_definition_names(definitions: Sequence["TopLevelDefinition"]) -> set[str]:
+    """Return the set of top-level definitions that have `dynamic_name=True`.
+
+    Used by the load-time validator to forbid macros that reference dynamic definitions.
+    """
+    dynamic_names: set[str] = set()
+    for definition in definitions:
+        if getattr(definition, "dynamic_name", False):
+            dynamic_names.add(definition.name)
+    return dynamic_names
+
+
+def _macro_subjects_for_definition(definition: "TopLevelDefinition") -> set[str]:
+    """Collect every macro subject referenced anywhere inside a top-level definition.
+
+    Includes the top-level definition's own signatures and, for class definitions, the
+    signatures of nested method / field / export defs. Macro subjects are dotted
+    accessor paths (`Parent.fields.foo`); we keep just the root identifier here since
+    that is what the dynamic-name forbid rule cares about.
+    """
+    subjects: set[str] = set()
+
+    def _add_from(defn: Definition) -> None:
+        for signature in defn.signatures:
+            for macro in signature.get_macro_definitions():
+                root, _, _ = macro.subject.partition(".")
+                subjects.add(root)
+
+    _add_from(definition)
+    if isinstance(definition, ClassDefinition):
+        for nested in (*definition.methods, *definition.fields, *definition.exports):
+            _add_from(nested)
+    return subjects
+
+
+def validate_definitions(definitions: Sequence["TopLevelDefinition"]) -> None:
+    """Cross-definition validation that runs after merge_definitions_groups.
+
+    Raises sigmatcher.errors.MacroPointsToDynamicError if any definition's signatures
+    reference a dynamic definition via a macro — see decision #4 in the redesign.
+    """
+    # Local import to avoid a hard cycle (errors imports MacroStatement only behind
+    # TYPE_CHECKING, so the runtime cycle is one-way: definitions -> errors).
+    from sigmatcher.errors import MacroPointsToDynamicError  # noqa: PLC0415
+
+    dynamic_names = _collect_dynamic_definition_names(definitions)
+    if not dynamic_names:
+        return
+    for definition in definitions:
+        for subject in _macro_subjects_for_definition(definition):
+            if subject in dynamic_names:
+                raise MacroPointsToDynamicError(definition.name, subject)
+
+
 def merge_definitions_groups(definition_groups: Sequence[Sequence[TDefinition]]) -> tuple[TDefinition, ...]:
     """
     Merge multiple definition groups into a single group,

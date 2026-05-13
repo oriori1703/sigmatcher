@@ -122,6 +122,30 @@ class FailedDependencyError(DependencyError):
         return "Skipped because of failed dependencies"
 
 
+class MacroPointsToDynamicError(SigmatcherError):
+    """
+    Raised at signature-file load time when a macro `${X.<property>}` references a
+    definition `X` whose `dynamic_name` flag is set.
+
+    Dynamic definitions emit 0+ matches per run, so a macro that needs a single concrete
+    value (`X.java`, `X.full_name`, etc.) cannot be resolved unambiguously. This is a
+    hard error, not a per-analyzer failure, so authors see the problem at load time
+    instead of after analysis runs.
+    """
+
+    def __init__(self, analyzer_name: str, dynamic_dependency: str, *args: object) -> None:
+        self.dynamic_dependency: str = dynamic_dependency
+        super().__init__(analyzer_name, dynamic_dependency, *args)
+
+    @override
+    def short_message(self) -> str:
+        return (
+            f"Definition {self.analyzer_name!r} references dynamic definition "
+            f"{self.dynamic_dependency!r} via a macro, which is not allowed: dynamic "
+            "definitions emit 0+ matches and cannot be macro-resolved to a single value."
+        )
+
+
 class MissingClassNameGroupError(SigmatcherError):
     """
     Raised when a ClassDefinition has dynamic_name=True but none of the signatures

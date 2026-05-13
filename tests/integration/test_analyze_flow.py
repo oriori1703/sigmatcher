@@ -7,7 +7,7 @@ import sigmatcher.definitions
 from sigmatcher.analysis import analyze
 from sigmatcher.cache import Cache
 from sigmatcher.definitions import ClassDefinition, ExportDefinition, FieldDefinition, MethodDefinition, RegexSignature
-from sigmatcher.errors import MissingClassNameGroupError
+from sigmatcher.errors import MacroPointsToDynamicError, MissingClassNameGroupError
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -411,37 +411,13 @@ def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
     assert result.app_version == "1.0.0"
 
 
-@pytest.mark.integration
-def test_analyze_dynamic_name_macro_reference_from_other_definition(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A second ClassDefinition references the dynamic-name class via ${X.java}.
-    The macro should resolve to the obfuscated class (not the captured readable name),
-    the dependent class should match, and the captured readable name should propagate
-    to the dynamic-name class result."""
-    cache = Cache(tmp_path / "cache")
-    apktool_dir = cache.get_apktool_cache_dir()
-    apktool_dir.mkdir(parents=True)
+def test_macro_points_at_dynamic_def_load_error() -> None:
+    """A second ClassDefinition references a dynamic-name class via ${X.java}.
 
-    _write_dynamic_name_smali(
-        apktool_dir,
-        "a",
-        ".method public toString()Ljava/lang/String;\n"
-        '    const-string v0, "ConnectionManager{state=connected"\n'
-        "    return-object v0\n"
-        ".end method\n",
-    )
-    network_handler_smali = apktool_dir / "NetworkHandler.smali"
-    _ = network_handler_smali.write_text(
-        ".class public Lcom/example/n;\n"
-        ".super Ljava/lang/Object;\n"
-        ".method public handle()V\n"
-        "    new-instance v0, Lcom/example/a;\n"
-        "    return-void\n"
-        ".end method\n"
-    )
-
-    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+    Dynamic definitions emit 0+ matches and cannot be macro-resolved to a single
+    concrete value (decision #4). The validator that runs after
+    merge_definitions_groups must hard-error at load time, before analysis runs."""
+    from sigmatcher.definitions import validate_definitions  # noqa: PLC0415
 
     definitions = [
         ClassDefinition(
@@ -465,17 +441,7 @@ def test_analyze_dynamic_name_macro_reference_from_other_definition(
         ),
     ]
 
-    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
-
-    dynamic_entries = results["UnknownToStringClass"]
-    assert isinstance(dynamic_entries, list)
-    dynamic_result = dynamic_entries[0]
-    assert isinstance(dynamic_result, MatchedClass)
-    assert dynamic_result.original.name == "ConnectionManager"
-    assert dynamic_result.new.to_java_representation() == "Lcom/example/a;"
-
-    network_entries = results["NetworkHandler"]
-    assert isinstance(network_entries, list)
-    network_result = network_entries[0]
-    assert isinstance(network_result, MatchedClass)
-    assert network_result.new.to_java_representation() == "Lcom/example/n;"
+    with pytest.raises(MacroPointsToDynamicError) as exc_info:
+        validate_definitions(definitions)
+    assert exc_info.value.analyzer_name == "NetworkHandler"
+    assert exc_info.value.dynamic_dependency == "UnknownToStringClass"
