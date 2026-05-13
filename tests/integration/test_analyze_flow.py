@@ -6,8 +6,18 @@ import pytest
 import sigmatcher.definitions
 from sigmatcher.analysis import analyze
 from sigmatcher.cache import Cache
-from sigmatcher.definitions import ClassDefinition, ExportDefinition, FieldDefinition, MethodDefinition, RegexSignature
-from sigmatcher.errors import MacroPointsToDynamicError, MissingDynamicCaptureGroupError
+from sigmatcher.definitions import (
+    ClassDefinition,
+    ExportDefinition,
+    FieldDefinition,
+    MethodDefinition,
+    RegexSignature,
+    TopLevelDefinition,
+    TopLevelExportDefinition,
+    TopLevelFieldDefinition,
+    TopLevelMethodDefinition,
+)
+from sigmatcher.errors import MacroPointsToDynamicError, MissingDynamicCaptureGroupError, SigmatcherError
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -445,3 +455,440 @@ def test_macro_points_at_dynamic_def_load_error() -> None:
         validate_definitions(definitions)
     assert exc_info.value.analyzer_name == "NetworkHandler"
     assert exc_info.value.dynamic_dependency == "UnknownToStringClass"
+
+
+def _setup_corpus(tmp_path: Path) -> tuple[Cache, Path]:
+    cache = Cache(tmp_path / "cache")
+    apktool_dir = cache.get_apktool_cache_dir()
+    apktool_dir.mkdir(parents=True)
+    return cache, apktool_dir
+
+
+EXPECTED_TWO_PARENT_MATCHES = 2
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_class_def_multi_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A single dynamic class def that matches three smali files produces three results."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    for obfuscated, readable in (("a", "Alpha"), ("b", "Beta"), ("c", "Gamma")):
+        _write_dynamic_name_smali(
+            apktool_dir,
+            obfuscated,
+            ".method public toString()Ljava/lang/String;\n"
+            f'    const-string v0, "{readable}{{state=on"\n'
+            "    return-object v0\n"
+            ".end method\n",
+        )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="ToStringPlaceholder",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    matches = results["ToStringPlaceholder"]
+    assert isinstance(matches, list)
+    captured = {m.original.name for m in matches if isinstance(m, MatchedClass)}
+    assert captured == {"Alpha", "Beta", "Gamma"}
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_method_def_corpus_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    for obfuscated in ("a", "b"):
+        _write_dynamic_name_smali(
+            apktool_dir,
+            obfuscated,
+            ".method public toString()Ljava/lang/String;\n"
+            "    .registers 2\n"
+            f'    const-string v0, "{obfuscated.upper()}_TOKEN"\n'
+            "    return-object v0\n"
+            ".end method\n",
+        )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelMethodDefinition(
+            name="AutoToStringPlaceholder",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'const-string v\d+, "(?P<method_name>\w+_TOKEN)"', "count": "1-10"}
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    matches = results["AutoToStringPlaceholder"]
+    assert isinstance(matches, list)
+    captured = {m.original.name for m in matches if isinstance(m, MatchedMethod)}
+    assert captured == {"A_TOKEN", "B_TOKEN"}
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_field_def_corpus_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".field private final socket:Lcom/example/Socket;\n.field private final buffer:Lcom/example/Buffer;\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelFieldDefinition(
+            name="ExampleFieldPlaceholder",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r"\.field private final (?P<match>(?P<field_name>\w+):Lcom/example/\w+;)",
+                        "count": "1-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    matches = results["ExampleFieldPlaceholder"]
+    assert isinstance(matches, list)
+    captured = {m.original.name for m in matches if isinstance(m, MatchedField)}
+    assert captured == {"socket", "buffer"}
+
+
+@pytest.mark.integration
+def test_top_level_dynamic_export_def_corpus_scan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        '    const-string v0, "FEATURE_alpha"\n    const-string v1, "FEATURE_beta"\n',
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelExportDefinition(
+            name="FeatureFlag",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<match>FEATURE_(?P<export_name>\w+))"', "count": "1-10"}
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    matches = results["FeatureFlag"]
+    assert isinstance(matches, list)
+    captured = {m.new.name for m in matches if isinstance(m, MatchedExport)}
+    assert captured == {"alpha", "beta"}
+
+
+@pytest.mark.integration
+def test_dynamic_def_zero_matches_is_not_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dynamic def that matches nothing yields an empty list, not an exception (decision #8)."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(apktool_dir, "a", "")
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelMethodDefinition(
+            name="WontMatchAnything",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<method_name>nothing-here)"', "count": "0-10"}
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    assert results["WontMatchAnything"] == []
+
+
+@pytest.mark.integration
+def test_dynamic_parent_with_static_children_all_or_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A dynamic parent matching N classes: a static child that fails for one of them
+    yields one SigmatcherError for the whole child (decision #6). When all parents
+    yield the child cleanly, the child produces N results."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    # Two classes match the dynamic parent. The child field signature only matches
+    # in one of them — so the all-or-nothing rule should surface a single error.
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "Alpha{state=on"\n'
+        "    return-object v0\n"
+        ".end method\n"
+        ".field private final value:I\n",
+    )
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "b",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "Beta{state=on"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+            fields=(
+                FieldDefinition(
+                    name="value",
+                    signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>value:I)")),),
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    parent_matches = results["DynParent"]
+    assert isinstance(parent_matches, list)
+    assert len(parent_matches) == EXPECTED_TWO_PARENT_MATCHES
+
+    child_result = results["DynParent.fields.value"]
+    # The static child cannot match in the Beta parent, so per decision #6 the entire
+    # child result is one SigmatcherError, not a mixed list.
+    assert isinstance(child_result, SigmatcherError)
+
+
+@pytest.mark.integration
+def test_dynamic_parent_with_static_children_success_yields_n_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Companion to the all-or-nothing test: when the static child succeeds for every
+    parent match, the child analyzer produces N results."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    for obfuscated, readable in (("a", "Alpha"), ("b", "Beta")):
+        _write_dynamic_name_smali(
+            apktool_dir,
+            obfuscated,
+            ".method public toString()Ljava/lang/String;\n"
+            f'    const-string v0, "{readable}{{state=on"\n'
+            "    return-object v0\n"
+            ".end method\n"
+            ".field private final value:I\n",
+        )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+            fields=(
+                FieldDefinition(
+                    name="value",
+                    signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>value:I)")),),
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    child_result = results["DynParent.fields.value"]
+    assert isinstance(child_result, list)
+    assert len(child_result) == EXPECTED_TWO_PARENT_MATCHES
+
+
+@pytest.mark.integration
+def test_static_parent_dynamic_method_child(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A top-level dynamic method def works alongside a static class def in the same
+    signature file. Covers the 0, 1, and N capture cases for the top-level method
+    analyzer (the static class def is just a co-tenant)."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "Alpha"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "b",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "Beta"\n'
+        "    return-object v0\n"
+        ".end method\n"
+        ".method public toString2()Ljava/lang/String;\n"
+        '    const-string v0, "BetaTwo"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "c",
+        ".method public irrelevant()V\n    return-void\n.end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        TopLevelMethodDefinition(
+            name="ToStringMethods",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'const-string v\d+, "(?P<method_name>\w+)"',
+                        "count": "1-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    matches = results["ToStringMethods"]
+    assert isinstance(matches, list)
+    captured = {m.original.name for m in matches if isinstance(m, MatchedMethod)}
+    # 3 method captures expected: Alpha (a), Beta (b), BetaTwo (b). c.smali has no
+    # const-string so it contributes nothing — exercising the 0-capture-per-file path.
+    assert captured == {"Alpha", "Beta", "BetaTwo"}
+
+
+@pytest.mark.integration
+def test_dynamic_parent_with_dynamic_children(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both axes dynamic: dynamic parent matching N classes paired with a top-level
+    dynamic method analyzer should yield N method results across the matched parents."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    for obfuscated, readable in (("a", "Alpha"), ("b", "Beta")):
+        _write_dynamic_name_smali(
+            apktool_dir,
+            obfuscated,
+            ".method public toString()Ljava/lang/String;\n"
+            f'    const-string v0, "{readable}{{state=on"\n'
+            "    return-object v0\n"
+            ".end method\n",
+        )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+        ),
+        TopLevelMethodDefinition(
+            name="DynToStringChild",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'const-string v\d+, "(?P<method_name>\w+)\{state=',
+                        "count": "1-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    parent_matches = results["DynParent"]
+    assert isinstance(parent_matches, list)
+    method_matches = results["DynToStringChild"]
+    assert isinstance(method_matches, list)
+    captured_methods = {m.original.name for m in method_matches if isinstance(m, MatchedMethod)}
+    assert captured_methods == {"Alpha", "Beta"}
+
+
+@pytest.mark.integration
+def test_cache_round_trip_dynamic_multi_match(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Write the cache, re-run, verify N matches are restored and child re-linking works."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    for obfuscated, readable in (("a", "Alpha"), ("b", "Beta")):
+        _write_dynamic_name_smali(
+            apktool_dir,
+            obfuscated,
+            ".method public toString()Ljava/lang/String;\n"
+            f'    const-string v0, "{readable}{{state=on"\n'
+            "    return-object v0\n"
+            ".end method\n"
+            ".field private final value:I\n",
+        )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+            fields=(
+                FieldDefinition(
+                    name="value",
+                    signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>value:I)")),),
+                ),
+            ),
+        ),
+    ]
+
+    first = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    assert isinstance(first["DynParent"], list)
+    assert len(first["DynParent"]) == EXPECTED_TWO_PARENT_MATCHES
+
+    second = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    parent_matches = second["DynParent"]
+    assert isinstance(parent_matches, list)
+    assert len(parent_matches) == EXPECTED_TWO_PARENT_MATCHES
+    captured = {m.original.name for m in parent_matches if isinstance(m, MatchedClass)}
+    assert captured == {"Alpha", "Beta"}
+
+    child_results = second["DynParent.fields.value"]
+    assert isinstance(child_results, list)
+    assert len(child_results) == EXPECTED_TWO_PARENT_MATCHES
+    # Each child carries its parent's obfuscated java repr so re-linking is unambiguous.
+    parent_javas: set[str] = set()
+    for child in child_results:
+        assert isinstance(child, MatchedField)
+        assert child.smali_class is not None
+        parent_javas.add(child.smali_class.to_java_representation())
+    assert parent_javas == {"Lcom/example/a;", "Lcom/example/b;"}

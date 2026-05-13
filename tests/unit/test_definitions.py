@@ -4,15 +4,21 @@ import pydantic
 import pytest
 
 from sigmatcher.definitions import (
+    DEFINITIONS_TYPE_ADAPTER,
     ClassDefinition,
     CountRange,
     GlobSignature,
     MacroStatement,
     MethodDefinition,
     RegexSignature,
+    TopLevelExportDefinition,
+    TopLevelFieldDefinition,
+    TopLevelMethodDefinition,
     is_in_version_range,
     merge_definitions_groups,
+    validate_definitions,
 )
+from sigmatcher.errors import MacroPointsToDynamicError
 
 EXACT_COUNT = 2
 
@@ -172,3 +178,93 @@ def test_class_name_group_survives_macro_resolution() -> None:
     resolved = signature.resolve_macro(MacroStatement("OtherClass", "java"), "Lcom/example/Other;")
     assert "class_name" in resolved.signature.groupindex
     assert resolved.capture_class_name('new-instance v0, Lcom/example/Other; foo bar "Captured{state=') == {"Captured"}
+
+
+def test_top_level_method_def_round_trip() -> None:
+    raw_yaml = [
+        {
+            "type": "method",
+            "name": "ToString",
+            "dynamic_name": True,
+            "signatures": [
+                {"type": "regex", "signature": r'const-string v\d+, "(?P<method_name>\w+)\{state='},
+            ],
+        }
+    ]
+    definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+    assert len(definitions) == 1
+    method_def = definitions[0]
+    assert isinstance(method_def, TopLevelMethodDefinition)
+    assert method_def.name == "ToString"
+    assert method_def.dynamic_name
+
+
+def test_top_level_field_def_round_trip() -> None:
+    raw_yaml = [
+        {
+            "type": "field",
+            "name": "EventBus",
+            "dynamic_name": True,
+            "signatures": [
+                {
+                    "type": "regex",
+                    "signature": r"^\.field private final (?P<match>.+:Lcom/(?P<field_name>\w+)/Bus;)",
+                },
+            ],
+        }
+    ]
+    definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+    assert isinstance(definitions[0], TopLevelFieldDefinition)
+    assert definitions[0].dynamic_name
+
+
+def test_top_level_export_def_round_trip() -> None:
+    raw_yaml = [
+        {
+            "type": "export",
+            "name": "ApiVersion",
+            "dynamic_name": True,
+            "signatures": [
+                {"type": "regex", "signature": r'"api/v(?P<export_name>\d+)/"'},
+            ],
+        }
+    ]
+    definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+    assert isinstance(definitions[0], TopLevelExportDefinition)
+    assert definitions[0].dynamic_name
+
+
+def test_backward_compat_no_type_field() -> None:
+    """A bare list of class defs without `type:` must keep validating (decision #1)."""
+    raw_yaml = [
+        {
+            "name": "ConnectionManager",
+            "signatures": [
+                {"type": "regex", "signature": "old-class-signature"},
+            ],
+            "methods": [
+                {
+                    "name": "read",
+                    "signatures": [{"type": "regex", "signature": "old-method-signature"}],
+                },
+            ],
+        }
+    ]
+    definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
+    assert isinstance(definitions[0], ClassDefinition)
+    assert definitions[0].name == "ConnectionManager"
+
+
+def test_validate_macro_points_at_dynamic() -> None:
+    """Validator must raise at load time, after merge_definitions_groups."""
+    dynamic = ClassDefinition(
+        name="Dyn",
+        dynamic_name=True,
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<class_name>\w+)\{state=")),),
+    )
+    consumer = ClassDefinition(
+        name="Consumer",
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"new-instance v0, ${Dyn.java}")),),
+    )
+    with pytest.raises(MacroPointsToDynamicError):
+        validate_definitions([dynamic, consumer])
