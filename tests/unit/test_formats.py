@@ -172,6 +172,29 @@ def test_flatten_synthesizes_holder_for_top_level_field_and_export() -> None:
     assert holder.exports == [export]
 
 
+def test_enigma_format_is_order_deterministic() -> None:
+    """Pin that EnigmaFormatter sorts entries by readable original.name regardless of
+    the dict insertion order — output diffability across runs depends on it."""
+    alpha = _make_class("Alpha", "x")
+    beta = _make_class("Beta", "y")
+    zeta = _make_class("Zeta", "z")
+    forward = convert_to_format({"A": alpha, "B": beta, "Z": zeta}, MappingFormat.ENIGMA)
+    reversed_order = convert_to_format({"Z": zeta, "B": beta, "A": alpha}, MappingFormat.ENIGMA)
+    assert forward == reversed_order
+    # Sorted ascending by original.name.
+    assert forward.index("Alpha") < forward.index("Beta") < forward.index("Zeta")
+
+
+def test_jadx_format_is_order_deterministic() -> None:
+    alpha = _make_class("Alpha", "x")
+    beta = _make_class("Beta", "y")
+    zeta = _make_class("Zeta", "z")
+    forward = convert_to_format({"A": alpha, "B": beta, "Z": zeta}, MappingFormat.JADX)
+    reversed_order = convert_to_format({"Z": zeta, "B": beta, "A": alpha}, MappingFormat.JADX)
+    assert forward == reversed_order
+    assert forward.index("Alpha") < forward.index("Beta") < forward.index("Zeta")
+
+
 def test_flatten_does_not_synthesize_holder_for_nested_static_children() -> None:
     """Children of a class analyzer (e.g. `ConnectionManager.methods.read`) carry a
     `smali_class` attribute on their pydantic model — same shape as the top-level

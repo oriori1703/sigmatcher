@@ -104,7 +104,10 @@ class EnigmaFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         final = StringIO()
-        for matched_class in matched_classes.values():
+        # Sort by readable `original.name` so the output is deterministic across runs
+        # regardless of the analyzer dispatch order. Mirrors `RawFormatter`'s
+        # sort_keys=True and `LegacyFormatter`'s ordering.
+        for matched_class in sorted(matched_classes.values(), key=lambda mc: mc.original.name):
             _ = final.write(self.convert_class(matched_class))
         return final.getvalue()
 
@@ -191,7 +194,10 @@ class JadxFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         jadx_project = JadxProjectFile(code_data=JadxCodeData(renames=[]))
-        for matched_class in matched_classes.values():
+        # Sort by readable `original.name` so the output is deterministic across runs
+        # regardless of the analyzer dispatch order. Mirrors `RawFormatter`'s
+        # sort_keys=True and `LegacyFormatter`'s ordering.
+        for matched_class in sorted(matched_classes.values(), key=lambda mc: mc.original.name):
             class_node_ref = JadxNodeRef(ref_type="CLASS", decl_class=matched_class.new.to_full_name())
             class_rename = JadxRename(new_name=matched_class.original.to_full_name(), node_ref=class_node_ref)
             jadx_project.code_data.renames.append(class_rename)
