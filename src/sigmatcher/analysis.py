@@ -448,6 +448,11 @@ class FieldAnalyzer(ChildAnalyzer):
     @override
     def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
         assert isinstance(parent_class_result.smali_file, Path)
+        if not signatures:
+            # Defensive: ChildAnalyzer._resolve_signatures_or_raise already enforces
+            # the same check up the call stack. The narrowing here exists for basedpyright,
+            # which otherwise sees signatures[0] as a `tuple[()]` indexing error.
+            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
         signature = signatures[0]
@@ -519,6 +524,9 @@ class ExportAnalyzer(ChildAnalyzer):
     @override
     def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
         assert isinstance(parent_class_result.smali_file, Path)
+        if not signatures:
+            # Defensive: see FieldAnalyzer._analyze_for_parent for the same narrowing rationale.
+            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
         signature = signatures[0]
