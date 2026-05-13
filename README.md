@@ -18,7 +18,7 @@ invaluable resource for long-running reverse engineering projects.
   - [Signature File JSON Schema](#signature-file-json-schema)
   - [Structure of a Signature File](#structure-of-a-signature-file)
   - [Using Macros in Signatures](#using-macros-in-signatures)
-  - [Dynamic Class Names](#dynamic-class-names)
+  - [Dynamic Definitions](#dynamic-definitions)
 - [License](#license)
 
 ## Installation
@@ -252,68 +252,89 @@ In this example:
 - Use the `java` property when you need the complete Java/Smali representation of a class, method, or field
 - Macros work with both `regex` and `glob` signature types
 
-### Dynamic Class Names
+### Dynamic Definitions
 
-Normally a `ClassDefinition` declares the human-readable class `name` up front and `sigmatcher`
-finds the obfuscated class it maps to. Sometimes the readable name is not known in advance but
-is embedded in the obfuscated class itself — for example, a class whose `toString()` returns
-a literal containing its original name:
+Normally a definition declares its human-readable `name` up front and `sigmatcher` finds the
+obfuscated class / method / field / export it maps to. Sometimes the readable name is not known
+in advance but is embedded in the smali itself — for example, a class whose `toString()`
+returns a literal containing its original name, or an auto-generated method present across
+many classes:
 
 ```smali
 const-string v0, "ConnectionManager{state=connected"
 ```
 
-In that case you can opt in to **dynamic class name** capture: declare a placeholder identifier
-as the YAML `name`, set `dynamic_name: true`, and add a `(?P<class_name>...)` named group in one
-of the signatures. The captured substring becomes the result's `original.name` and is what each
-output mapping format uses for the readable class name — see the format-by-format breakdown
-below. The placeholder `name` is still used as the identifier for macro references, caching,
-and the dependency graph, and remains the dictionary key in `raw` output.
+In that case you can opt in to **dynamic definitions**. A dynamic definition is a single
+signature that matches **0 or more entities** in the corpus; each match becomes its own result,
+with the readable identifier captured from a named regex group in the signature.
 
-How the captured name surfaces per output format:
+Dynamic definitions are available on every axis:
 
-- `raw`: the top-level JSON key for the class is the placeholder `name` (the analyzer
-  identifier, e.g. `UnknownToStringClass`); the captured value appears inside the entry as
-  `original.name`.
-- `legacy`: the top-level JSON key for the class is the captured `original.name` directly.
-- `enigma`: each `CLASS <new_java> <original_java>` line embeds the captured name into
-  `<original_java>` via `original.to_java_representation()`, so it is prefixed by the
-  definition's `package` (defaulting to the obfuscated class's package when `package` is
-  unset).
-- `jadx`: each rename uses `original.to_full_name()` as `newName`, again prefixed by
-  `package`.
+| Axis | Top-level `type:` | Capture group | Resulting result type |
+|------|-------------------|---------------|-----------------------|
+| Class | `class` (default) | `(?P<class_name>...)` | `MatchedClass` |
+| Method | `method` | `(?P<method_name>...)` | `MatchedMethod` |
+| Field | `field` | `(?P<field_name>...)` | `MatchedField` |
+| Export | `export` | `(?P<export_name>...)` | `MatchedExport` |
+
+A bare list of definitions without a `type:` field is parsed as the historical
+`ClassDefinition` shape — the `type` discriminator defaults to `class`.
 
 ```yaml
 # $schema: ./definitions.schema.json
 # yaml-language-server: $schema=./definitions.schema.json
 
+# Dynamic class: one MatchedClass per smali file matching the signature.
 - name: "UnknownToStringClass"
   dynamic_name: true
   signatures:
     - signature: '"(?P<class_name>\w+)\{state='
       type: regex
       count: 1
+
+# Dynamic top-level method: scans the whole corpus and emits one MatchedMethod per match.
+- type: method
+  name: "AutoToString"
+  dynamic_name: true
+  signatures:
+    - signature: 'const-string v\d+, "(?P<method_name>\w+_TOKEN)"'
+      type: regex
+      count: "1-100"
 ```
 
-Notes:
+#### Output format keying
 
-- The placeholder `name` (`UnknownToStringClass` above) is what other definitions reference via
-  macros (e.g. `${UnknownToStringClass.java}`), and what appears in error messages.
-- If a `dynamic_name: true` definition's signatures match the file but no `(?P<class_name>...)`
-  capture is produced, the match fails (`NoMatchesError`).
-- If the capture yields multiple distinct values from the matched smali, the match fails
-  (`TooManyMatchesError`). Tighten the regex to disambiguate.
-- Captures are compared after `str.strip()`: leading/trailing whitespace is treated as
-  insignificant, and a capture that is empty or whitespace-only is dropped. Two
-  occurrences that differ only in ambient whitespace (e.g. `" Foo"` and `"Foo"`) collapse
-  to one value; if you need to distinguish them, narrow the regex so the capture group
-  cannot pick up surrounding whitespace.
-- A `dynamic_name: true` definition must have at least one signature carrying the
-  `(?P<class_name>...)` group applicable to the current app version. If a `version_range`
-  filters the only capturing signature out, analysis raises a dedicated
-  `MissingClassNameGroupError` pointing at the definition and version.
-- The opt-in flag is required: putting a `(?P<class_name>...)` group on a class signature
-  without setting `dynamic_name: true` is a validation error, to prevent silent activation.
+Output formats key each result by the **captured** `original.name`, not the placeholder name
+declared in YAML. The placeholder name is still used for macros, caching, and the dependency
+graph — but `raw`, `legacy`, `enigma`, and `jadx` all index by what was captured.
+
+For top-level dynamic method / field / export definitions, the matched entities are folded
+under a **synthesized holder class entry** keyed by the obfuscated class they were found in.
+This keeps the "one MatchedClass per top-level key" output contract intact.
+
+#### Semantic rules
+
+- **0 matches is not an error.** A dynamic definition whose signature matches nothing yields
+  an empty list, not a `NoMatchesError`. (Static definitions still error on 0 matches.)
+- **Each capture becomes its own result.** If a dynamic class def matches three smali files
+  with distinct captures `Alpha`, `Beta`, `Gamma`, the result list has three `MatchedClass`
+  entries.
+- **Macros cannot point at dynamic definitions.** A `${Foo.java}` macro that references a
+  dynamic definition is a hard load-time error (`MacroPointsToDynamicError`) — dynamic defs
+  emit 0+ matches and cannot resolve to a single value.
+- **Static child + dynamic parent → all-or-nothing.** When a dynamic class def matches N
+  classes, each nested static child analyzer runs N times. If the child signature fails for
+  any one parent match, the entire child result is a single `SigmatcherError` rather than a
+  mixed list of successes and errors.
+- **Captured-name collisions are hard errors.** If two definitions produce results whose
+  `original.name` collide, output formatting raises `DuplicateCapturedNameError`. Tighten one
+  of the signatures to disambiguate.
+- **Captures are stripped.** `" Foo"` and `"Foo"` collapse to a single readable name `Foo`;
+  empty/whitespace-only captures are dropped.
+- **Version filtering still applies.** If `version_range` filters out the only signature with
+  the axis-specific capture group, analysis raises `MissingDynamicCaptureGroupError`. The
+  opt-in `dynamic_name: true` flag is required: putting `(?P<class_name>...)` (etc.) on a
+  signature without it is a validation error.
 
 ## License
 
