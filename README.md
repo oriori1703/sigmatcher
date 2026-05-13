@@ -289,6 +289,15 @@ Notes:
   capture is produced, the match fails (`NoMatchesError`).
 - If the capture yields multiple distinct values from the matched smali, the match fails
   (`TooManyMatchesError`). Tighten the regex to disambiguate.
+- Captures are compared after `str.strip()`: leading/trailing whitespace is treated as
+  insignificant, and a capture that is empty or whitespace-only is dropped. Two
+  occurrences that differ only in ambient whitespace (e.g. `" Foo"` and `"Foo"`) collapse
+  to one value; if you need to distinguish them, narrow the regex so the capture group
+  cannot pick up surrounding whitespace.
+- A `dynamic_name: true` definition must have at least one signature carrying the
+  `(?P<class_name>...)` group applicable to the current app version. If a `version_range`
+  filters the only capturing signature out, analysis raises a dedicated
+  `MissingClassNameGroupError` pointing at the definition and version.
 - The opt-in flag is required: putting a `(?P<class_name>...)` group on a class signature
   without setting `dynamic_name: true` is a validation error, to prevent silent activation.
 

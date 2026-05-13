@@ -274,6 +274,51 @@ def test_analyze_dynamic_name_cache_round_trip(tmp_path: Path, monkeypatch: pyte
 
 
 @pytest.mark.integration
+def test_analyze_dynamic_name_strips_whitespace_and_collapses_captures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin the documented semantics: captures are compared after str.strip(), so the
+    same readable name captured with and without leading whitespace collapses to a
+    single value instead of raising TooManyMatchesError."""
+    cache = Cache(tmp_path / "cache")
+    apktool_dir = cache.get_apktool_cache_dir()
+    apktool_dir.mkdir(parents=True)
+
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public describe()Ljava/lang/String;\n"
+        '    const-string v0, " ConnectionManager{state=on"\n'
+        '    const-string v1, "ConnectionManager{state=off"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions = [
+        ClassDefinition(
+            name="UnknownToStringClass",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'"(?P<class_name>\s?\w+)\{state=',
+                        "count": "1-10",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    result = results["UnknownToStringClass"]
+    assert isinstance(result, MatchedClass)
+    assert result.original.name == "ConnectionManager"
+
+
+@pytest.mark.integration
 def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

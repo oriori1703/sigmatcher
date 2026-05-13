@@ -218,6 +218,12 @@ class ClassAnalyzer(Analyzer):
             for signature in signatures:
                 if isinstance(signature, BaseRegexSignature):
                     captures.update(signature.capture_class_name(raw_class))
+            # Surrounding whitespace in a capture is treated as insignificant: " Foo"
+            # and "Foo" collapse to "Foo", and a capture that is empty / whitespace-only
+            # is dropped. This matches the realistic smali case where a leading space
+            # may end up inside a tolerant regex group, and prevents spurious
+            # TooManyMatchesError when the same readable name is captured twice with
+            # different ambient whitespace. See the README "Dynamic Class Names" section.
             captures = {c.strip() for c in captures if c and c.strip()}
             if not captures:
                 raise NoMatchesError(self.name, tuple(signatures))
