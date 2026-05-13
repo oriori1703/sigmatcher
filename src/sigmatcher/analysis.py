@@ -180,12 +180,17 @@ class Analyzer(ABC):
 
 
 @dataclasses.dataclass(frozen=True)
-class ClassAnalyzer(Analyzer):
+class ClassAnalyzer(Analyzer, ABC):
+    """Common base for class-level analyzers (static and dynamic).
+
+    Subclasses share the file-filtering pipeline but differ in how the readable
+    `original.name` is computed and in how many matches they may emit.
+    """
+
     definition: ClassDefinition
     search_root: Path
 
-    @override
-    def analyze(self, results: ResultsMapType) -> list[Result]:
+    def _find_class_matches(self, results: ResultsMapType) -> tuple[list[Signature], set[Path]]:
         signatures = list(self.get_resolved_signatures(results))
         if len(signatures) == 0:
             raise NoSignaturesError(self.name)
@@ -203,29 +208,71 @@ class ClassAnalyzer(Analyzer):
 
         initial_matches = get_smali_files(self.search_root)
         class_matches = filter_signature_matches(signatures, initial_matches, check_signature_callback)
+        return signatures, class_matches
 
-        self.check_match_count(class_matches, tuple(signatures))
-        match = next(iter(class_matches))
+    @staticmethod
+    def _read_new_class(match: Path) -> Class:
         with match.open() as f:
             class_definition_line = f.readline().rstrip("\n")
         _, _, raw_class_name = class_definition_line.rpartition(" ")
-        new_class = Class.from_java_representation(raw_class_name)
+        return Class.from_java_representation(raw_class_name)
 
-        readable_name = self.definition.name
-        if self.definition.dynamic_name:
-            readable_name = self._capture_dynamic_name(match, signatures)
-
+    def _build_matched_class(self, match: Path, readable_name: str) -> MatchedClass:
+        new_class = self._read_new_class(match)
         original_class = Class(name=readable_name, package=self.definition.package or new_class.package)
-        return [
-            MatchedClass(
-                original=original_class,
-                new=new_class,
-                smali_file=match,
-                matched_methods=[],
-                matched_fields=[],
-                exports=[],
-            )
-        ]
+        return MatchedClass(
+            original=original_class,
+            new=new_class,
+            smali_file=match,
+            matched_methods=[],
+            matched_fields=[],
+            exports=[],
+        )
+
+    def _rebuild_cached_class(self, cached: MatchedClass, readable_name: str) -> MatchedClass:
+        assert cached.smali_file is not None, "Cached MatchedClass must have a smali_file"
+        original_class = Class(name=readable_name, package=self.definition.package or cached.new.package)
+        return MatchedClass(
+            original=original_class,
+            new=cached.new,
+            matched_methods=[],
+            matched_fields=[],
+            exports=[],
+            smali_file=cached.smali_file,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class StaticClassAnalyzer(ClassAnalyzer):
+    """A class analyzer whose `original.name` is the YAML `name` itself."""
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        signatures, class_matches = self._find_class_matches(results)
+        self.check_match_count(class_matches, tuple(signatures))
+        match = next(iter(class_matches))
+        return [self._build_matched_class(match, self.definition.name)]
+
+    @override
+    def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
+        rebuilt: list[Result] = []
+        for cached_result in cached_results:
+            assert isinstance(cached_result, MatchedClass)
+            rebuilt.append(self._rebuild_cached_class(cached_result, self.definition.name))
+        return rebuilt
+
+
+@dataclasses.dataclass(frozen=True)
+class DynamicClassAnalyzer(ClassAnalyzer):
+    """A class analyzer whose `original.name` is captured from `(?P<class_name>...)`."""
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        signatures, class_matches = self._find_class_matches(results)
+        self.check_match_count(class_matches, tuple(signatures))
+        match = next(iter(class_matches))
+        readable_name = self._capture_dynamic_name(match, signatures)
+        return [self._build_matched_class(match, readable_name)]
 
     def _capture_dynamic_name(self, match: Path, signatures: Sequence[Signature]) -> str:
         # The model-level validator only sees the full signature tuple. The runtime
@@ -253,6 +300,8 @@ class ClassAnalyzer(Analyzer):
         captures = {c.strip() for c in captures if c and c.strip()}
         if not captures:
             raise NoMatchesError(self.name, tuple(signatures))
+        # TODO: remove this single-capture restriction when the analyzer is
+        # generalized to emit a list of MatchedClass results in commit 6.
         if len(captures) > 1:
             raise TooManyMatchesError[str](self.name, tuple(signatures), captures)
         return next(iter(captures))
@@ -262,21 +311,7 @@ class ClassAnalyzer(Analyzer):
         rebuilt: list[Result] = []
         for cached_result in cached_results:
             assert isinstance(cached_result, MatchedClass)
-            assert cached_result.smali_file is not None, "Cached MatchedClass must have a smali_file"
-
-            readable_name = cached_result.original.name if self.definition.dynamic_name else self.definition.name
-            original_class = Class(name=readable_name, package=self.definition.package or cached_result.new.package)
-
-            rebuilt.append(
-                MatchedClass(
-                    original=original_class,
-                    new=cached_result.new,
-                    matched_methods=[],
-                    matched_fields=[],
-                    exports=[],
-                    smali_file=cached_result.smali_file,
-                )
-            )
+            rebuilt.append(self._rebuild_cached_class(cached_result, cached_result.original.name))
         return rebuilt
 
 
@@ -444,7 +479,11 @@ def create_analyzers(
         if not class_definition.is_in_version_range(app_version):
             continue
 
-        class_analyzer = ClassAnalyzer(class_definition, app_version, canonical_search_root)
+        class_analyzer: ClassAnalyzer
+        if class_definition.dynamic_name:
+            class_analyzer = DynamicClassAnalyzer(class_definition, app_version, canonical_search_root)
+        else:
+            class_analyzer = StaticClassAnalyzer(class_definition, app_version, canonical_search_root)
         name_to_analyzer[class_definition.name] = class_analyzer
 
         for method_definition in class_definition.methods:
