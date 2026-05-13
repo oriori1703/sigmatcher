@@ -28,9 +28,9 @@ from sigmatcher.definitions import (
     validate_definitions,
 )
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
-from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
+from sigmatcher.formats import MappingFormat, convert_to_format, flatten_analyzer_results, parse_from_format
 from sigmatcher.input_paths import validate_input_path
-from sigmatcher.results import MatchedClass
+from sigmatcher.results import MatchedClass, Result
 from sigmatcher.unpack import get_apk_version, unpack_input
 
 if sys.version_info >= (3, 12):
@@ -284,18 +284,17 @@ def _output_results(
     output_errors_as_tree: bool,
     debug: bool,
 ) -> None:
-    successful_results: dict[str, MatchedClass] = {}
+    successful_lists: dict[str, list[Result]] = {}
     failed_results: dict[str, SigmatcherError] = {}
 
     for analyzer_name, result in results.items():
         if isinstance(result, SigmatcherError):
             failed_results[analyzer_name] = result
             continue
-        for entry in result:
-            if isinstance(entry, MatchedClass):
-                successful_results[analyzer_name] = entry
+        successful_lists[analyzer_name] = result
 
-    _output_successful_results(successful_results, output_file, output_format)
+    flattened = flatten_analyzer_results(successful_lists)
+    _output_successful_results(flattened, output_file, output_format)
     if not failed_results:
         return
     if output_errors_as_tree:

@@ -8,7 +8,17 @@ from typing import ClassVar, Literal
 import pydantic
 import pydantic.alias_generators
 
-from sigmatcher.results import Class, Field, MatchedClass, MatchedField, MatchedMethod, Method
+from sigmatcher.errors import DuplicateCapturedNameError
+from sigmatcher.results import (
+    Class,
+    Field,
+    MatchedClass,
+    MatchedExport,
+    MatchedField,
+    MatchedMethod,
+    Method,
+    Result,
+)
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -32,12 +42,16 @@ class RawFormatter(Formatter):
     @override
     def convert(self, matched_classes: dict[str, MatchedClass]) -> str:
         # Serialize each class on its own to exclude the smali_file field, instead of using a RootModel because of https://github.com/pydantic/pydantic/discussions/11383
+        # Output keys come from the captured `original.name` (decision #9). The
+        # caller (cli._output_results) builds the input dict via
+        # flatten_analyzer_results which already keys by captured name.
         return json.dumps(
             {
                 key: matched_class.model_dump(mode="dict", exclude={"smali_file"})
                 for key, matched_class in matched_classes.items()
             },
             indent=4,
+            sort_keys=True,
         )
 
 
@@ -280,6 +294,99 @@ class JadxParser(Parser):
         self._parse_fields(result, jadx_to_sigma_classes, jadx_to_sigma_field)
         self._parse_methods(result, jadx_to_sigma_classes, jadx_to_sigma_method)
         return result
+
+
+def flatten_analyzer_results(
+    analyzer_results: "dict[str, list[Result]]",
+) -> dict[str, MatchedClass]:
+    """Flatten the per-analyzer list-of-results into the flat shape output formats use.
+
+    - MatchedClass entries are keyed by `original.name` (the captured / static
+      readable name).
+    - Top-level MatchedMethod/MatchedField/MatchedExport entries (those that carry a
+      non-None `smali_class`) are folded into a synthesized holder-class entry keyed
+      by the parent obfuscated class's readable form, so the format contract stays
+      "one MatchedClass per top-level key" (decision #10).
+    - If two analyzers produce MatchedClass entries with the same captured
+      `original.name`, raise DuplicateCapturedNameError (decision #9).
+    """
+    by_captured_name: dict[str, MatchedClass] = {}
+    captured_name_origin: dict[str, str] = {}
+    # Holder classes synthesized for top-level dynamic method/field/export results
+    # are tracked separately so we can attach multiple top-level analyzers' results
+    # to the same obfuscated class without re-triggering the duplicate-name check.
+    holders_by_smali_java: dict[str, MatchedClass] = {}
+
+    for analyzer_name, entries in analyzer_results.items():
+        for entry in entries:
+            if isinstance(entry, MatchedClass):
+                _add_matched_class(entry, analyzer_name, by_captured_name, captured_name_origin)
+            else:
+                _attach_to_holder(entry, holders_by_smali_java)
+
+    for holder in holders_by_smali_java.values():
+        # Holders may share `original.name` with a captured class entry; in that case
+        # we should fold the holder's child results into the existing entry rather
+        # than re-keying. Decision #10 keeps the contract simple: one key per
+        # readable class name.
+        existing = by_captured_name.get(holder.original.name)
+        if existing is None:
+            by_captured_name[holder.original.name] = holder
+            continue
+        existing.matched_methods.extend(holder.matched_methods)
+        existing.matched_fields.extend(holder.matched_fields)
+        existing.exports.extend(holder.exports)
+
+    return by_captured_name
+
+
+def _add_matched_class(
+    entry: MatchedClass,
+    analyzer_name: str,
+    by_captured_name: dict[str, MatchedClass],
+    captured_name_origin: dict[str, str],
+) -> None:
+    captured = entry.original.name
+    if captured in by_captured_name:
+        # Same analyzer emitting multiple holders for the same captured name is fine
+        # (e.g. a dynamic class def that matches multiple smali files but all collapse
+        # to the same readable name) — that case is folded; cross-analyzer collisions
+        # are the actual error.
+        if captured_name_origin[captured] != analyzer_name:
+            raise DuplicateCapturedNameError(captured, captured_name_origin[captured], analyzer_name)
+        existing = by_captured_name[captured]
+        existing.matched_methods.extend(entry.matched_methods)
+        existing.matched_fields.extend(entry.matched_fields)
+        existing.exports.extend(entry.exports)
+        return
+    by_captured_name[captured] = entry
+    captured_name_origin[captured] = analyzer_name
+
+
+def _attach_to_holder(entry: Result, holders_by_smali_java: dict[str, MatchedClass]) -> None:
+    smali_class = getattr(entry, "smali_class", None)
+    if smali_class is None:
+        # Defensive: a non-MatchedClass top-level result without a smali_class has
+        # nowhere to land. Skip rather than synthesize a "unknown" holder.
+        return
+    smali_java = smali_class.to_java_representation()  # pyright: ignore[reportAny]
+    holder = holders_by_smali_java.get(smali_java)
+    if holder is None:
+        assert isinstance(smali_class, Class)
+        holder = MatchedClass(
+            original=smali_class,
+            new=smali_class,
+            matched_methods=[],
+            matched_fields=[],
+            exports=[],
+        )
+        holders_by_smali_java[smali_java] = holder
+    if isinstance(entry, MatchedMethod):
+        holder.matched_methods.append(entry)
+    elif isinstance(entry, MatchedField):
+        holder.matched_fields.append(entry)
+    elif isinstance(entry, MatchedExport):
+        holder.exports.append(entry)
 
 
 class MappingFormat(str, enum.Enum):

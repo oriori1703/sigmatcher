@@ -122,6 +122,31 @@ class FailedDependencyError(DependencyError):
         return "Skipped because of failed dependencies"
 
 
+class DuplicateCapturedNameError(SigmatcherError):
+    """
+    Raised when emitting an output format and two different definitions produce
+    MatchedClass entries with the same readable `original.name`.
+
+    Output keys (raw/enigma/legacy/jadx) are derived from `original.name`, so a
+    collision would silently overwrite one of the entries. The redesign locks this
+    as a hard error (decision #9) so authors disambiguate explicitly.
+    """
+
+    def __init__(self, captured_name: str, first_analyzer: str, second_analyzer: str, *args: object) -> None:
+        self.captured_name: str = captured_name
+        self.first_analyzer: str = first_analyzer
+        self.second_analyzer: str = second_analyzer
+        super().__init__(first_analyzer, captured_name, second_analyzer, *args)
+
+    @override
+    def short_message(self) -> str:
+        return (
+            f"Two definitions captured the same readable name {self.captured_name!r}: "
+            f"{self.first_analyzer!r} and {self.second_analyzer!r}. Tighten one of the "
+            "signatures so the captures disambiguate."
+        )
+
+
 class MacroPointsToDynamicError(SigmatcherError):
     """
     Raised at signature-file load time when a macro `${X.<property>}` references a
