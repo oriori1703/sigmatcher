@@ -455,7 +455,9 @@ class FieldAnalyzer(ChildAnalyzer):
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
-        signature = signatures[0]
+        # `next(iter(...))` keeps the type narrow without indexing; basedpyright does
+        # not propagate the empty-truthiness narrowing through to `signatures[0]`.
+        signature = next(iter(signatures))
 
         raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
@@ -529,7 +531,7 @@ class ExportAnalyzer(ChildAnalyzer):
             raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
-        signature = signatures[0]
+        signature = next(iter(signatures))
 
         raw_class = parent_class_result.smali_file.read_text()
         captured_names = signature.capture(raw_class)
