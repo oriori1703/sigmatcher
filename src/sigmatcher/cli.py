@@ -284,12 +284,13 @@ def _output_failed_results_tree(failed_results: dict[str, SigmatcherError], debu
     stderr_console.print(tree)
 
 
-def _output_results(
+def _output_results(  # noqa: PLR0913
     results: ResultsMapType,
     output_file: Path | None,
     output_format: MappingFormat,
     output_errors_as_tree: bool,
     debug: bool,
+    child_analyzer_names: set[str] | None = None,
 ) -> None:
     successful_lists: dict[str, list[Result]] = {}
     failed_results: dict[str, SigmatcherError] = {}
@@ -300,7 +301,7 @@ def _output_results(
             continue
         successful_lists[analyzer_name] = result
 
-    flattened = flatten_analyzer_results(successful_lists)
+    flattened = flatten_analyzer_results(successful_lists, child_analyzer_names)
     _output_successful_results(flattened, output_file, output_format)
     if not failed_results:
         return
@@ -402,7 +403,15 @@ def analyze(  # noqa: PLR0913
     with analysis_progress:
         results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
 
-    _output_results(results, output_file, output_format, tree_errors, debug)
+    # Derive the child-analyzer name set from the structural `is_child_analyzer`
+    # marker (see analysis.get_child_analyzer_names) so that output formatting routes
+    # nested children correctly even when a user-authored top-level dynamic def has a
+    # name containing `.methods.`/`.fields.`/`.exports.`. The substring heuristic that
+    # `flatten_analyzer_results` would otherwise fall back to gets that edge case wrong.
+    child_analyzer_names = sigmatcher.analysis.get_child_analyzer_names(
+        merged_definitions, cache.get_apktool_cache_dir(), apk_version
+    )
+    _output_results(results, output_file, output_format, tree_errors, debug, child_analyzer_names)
     return results
 
 

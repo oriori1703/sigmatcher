@@ -208,6 +208,35 @@ def test_jadx_format_is_order_deterministic() -> None:
     assert forward.index("Alpha") < forward.index("Beta") < forward.index("Zeta")
 
 
+def test_flatten_top_level_dynamic_with_dotted_name_is_not_skipped() -> None:
+    """F2 regression: a user-authored top-level dynamic method/field/export definition
+    whose YAML `name` happens to contain `.methods.`/`.fields.`/`.exports.` (e.g. a
+    placeholder identifier like `MyClass.methods.foo`) must NOT be classified as a
+    nested child and silently dropped from output formatting.
+
+    Pre-fix, `flatten_analyzer_results` used a substring heuristic on the analyzer
+    name, so this entry would have been skipped. With the structural marker fix the
+    CLI passes an explicit `child_analyzer_names` set; a top-level dynamic def is not
+    in that set, so its results land in a synthesized holder regardless of the name.
+    """
+    smali_class = Class(name="a", package="com.example")
+    method = MatchedMethod(
+        original=Method(name="surprise", argument_types="", return_type="V"),
+        new=Method(name="x", argument_types="", return_type="V"),
+        smali_class=smali_class,
+    )
+    analyzer_results: dict[str, list[Result]] = {"MyClass.methods.foo": [method]}
+    # The CLI builds this set from the structural marker — no top-level dynamic def
+    # belongs in it, only nested child analyzers. Crucially, "MyClass.methods.foo" is
+    # absent here even though its dotted name shape would have fooled the heuristic.
+    child_analyzer_names: set[str] = set()
+    flattened = flatten_analyzer_results(analyzer_results, child_analyzer_names)
+    # The top-level dynamic method must surface via the synthesized holder keyed by
+    # the obfuscated smali class — not be silently dropped.
+    assert "a" in flattened
+    assert flattened["a"].matched_methods == [method]
+
+
 def test_flatten_does_not_synthesize_holder_for_nested_static_children() -> None:
     """Children of a class analyzer (e.g. `ConnectionManager.methods.read`) carry a
     `smali_class` attribute on their pydantic model — same shape as the top-level

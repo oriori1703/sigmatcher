@@ -140,6 +140,15 @@ class Analyzer(ABC):
     definition: Definition
     app_version: str | None
 
+    # Structural marker used by output formatting to decide whether an analyzer's
+    # results are nested children (already attached to a parent MatchedClass) or
+    # top-level entries (must be emitted in their own right). Overridden to True
+    # on `ChildAnalyzer`. Routing on this marker — rather than substring-matching
+    # the dotted analyzer name — keeps user-authored definitions whose `name`
+    # happens to contain ".methods."/".fields."/".exports." from being silently
+    # mis-routed.
+    is_child_analyzer: ClassVar[bool] = False
+
     @abstractmethod
     def analyze(self, results: ResultsMapType) -> list[Result]:
         pass
@@ -329,6 +338,8 @@ class DynamicClassAnalyzer(ClassAnalyzer):
 @dataclasses.dataclass(frozen=True)
 class ChildAnalyzer(Analyzer, ABC):
     parent: ClassAnalyzer
+
+    is_child_analyzer: ClassVar[bool] = True
 
     @override
     def _get_dependencies(self) -> set[str]:
@@ -790,6 +801,23 @@ def create_analyzers(
             name_to_analyzer[analyzer.name] = analyzer
 
     return name_to_analyzer
+
+
+def get_child_analyzer_names(
+    definitions: Sequence[TopLevelDefinition], search_root: Path, app_version: str | None
+) -> set[str]:
+    """Return the names of analyzers whose results are nested children of a class.
+
+    Output formatting (see `formats.flatten_analyzer_results`) needs to know which
+    `results` entries are nested children — those are already attached to their
+    parent `MatchedClass` and must not be re-routed into a synthesized holder.
+    Routing on this set, derived from the structural `is_child_analyzer` marker,
+    avoids substring-matching the analyzer name (which mis-classified user-authored
+    top-level defs whose YAML name happened to contain `.methods.`/`.fields.`/
+    `.exports.`).
+    """
+    name_to_analyzer = create_analyzers(definitions, search_root, app_version)
+    return {name for name, analyzer in name_to_analyzer.items() if analyzer.is_child_analyzer}
 
 
 def sort_analyzers(name_to_analyzer: dict[str, Analyzer], results: ResultsMapType) -> Iterable[str]:

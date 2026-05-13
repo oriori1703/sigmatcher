@@ -304,6 +304,7 @@ class JadxParser(Parser):
 
 def flatten_analyzer_results(
     analyzer_results: "dict[str, list[Result]]",
+    child_analyzer_names: set[str] | None = None,
 ) -> dict[str, MatchedClass]:
     """Flatten the per-analyzer list-of-results into the flat shape output formats use.
 
@@ -314,11 +315,19 @@ def flatten_analyzer_results(
       holder-class entry keyed by the parent obfuscated class's readable form, so
       the format contract stays "one MatchedClass per top-level key" (decision #10).
       Nested children of a class analyzer carry the same Match* types but are
-      identified by their dotted analyzer name (e.g. `Foo.methods.bar`) — those
-      are skipped here because they're already attached to their parent MatchedClass
-      via the parent's `matched_methods` / `matched_fields` / `exports` lists.
+      already attached to their parent MatchedClass via the parent's
+      `matched_methods` / `matched_fields` / `exports` lists — those are identified
+      via the `child_analyzer_names` set (built by the orchestrator from the
+      structural `Analyzer.is_child_analyzer` marker) and skipped.
     - If two analyzers produce MatchedClass entries with the same captured
       `original.name`, raise DuplicateCapturedNameError (decision #9).
+
+    `child_analyzer_names` is optional: when None we fall back to a substring-based
+    heuristic on the analyzer name. The CLI always passes the structural set; the
+    heuristic exists for direct programmatic callers and legacy tests, and intentionally
+    mis-handles user-authored top-level dynamic defs whose YAML name happens to contain
+    `.methods.`/`.fields.`/`.exports.` (those are silently skipped) — so callers that
+    care about that edge case must pass the set.
     """
     by_captured_name: dict[str, MatchedClass] = {}
     captured_name_origin: dict[str, str] = {}
@@ -331,7 +340,7 @@ def flatten_analyzer_results(
         for entry in entries:
             if isinstance(entry, MatchedClass):
                 _add_matched_class(entry, analyzer_name, by_captured_name, captured_name_origin)
-            elif _is_child_analyzer_name(analyzer_name):
+            elif _is_child_analyzer_entry(analyzer_name, child_analyzer_names):
                 # Nested child results are already attached to their parent MatchedClass
                 # (see ChildAnalyzer._update_parent_with_child_result). Skipping them here
                 # avoids duplicating them into a synthesized holder class.
@@ -378,14 +387,22 @@ def _add_matched_class(
     captured_name_origin[captured] = analyzer_name
 
 
-def _is_child_analyzer_name(analyzer_name: str) -> bool:
-    """Return True for dotted child analyzer names (e.g. `Class.methods.foo`).
+def _is_child_analyzer_entry(analyzer_name: str, child_analyzer_names: set[str] | None) -> bool:
+    """Return True if `analyzer_name` belongs to a nested child analyzer.
 
-    The orchestrator uses dotted names exclusively for `ChildAnalyzer` instances
-    (see `FieldAnalyzer.name`, `MethodAnalyzer.name`, `ExportAnalyzer.name`).
-    Top-level analyzers — including top-level dynamic method/field/export — use
-    the raw definition name, which never contains the axis infixes.
+    Preferred path: caller passes `child_analyzer_names`, built from the structural
+    `Analyzer.is_child_analyzer` marker by the orchestrator. That's an exact match —
+    no false positives, no surprises for user-authored top-level dynamic defs whose
+    YAML name contains `.methods.`/`.fields.`/`.exports.`.
+
+    Fallback path: when no set is provided we substring-match the dotted name
+    convention (`FieldAnalyzer.name`, `MethodAnalyzer.name`, `ExportAnalyzer.name`).
+    This path exists so direct callers of `flatten_analyzer_results` (programmatic
+    users, legacy tests) keep working, at the cost of mis-classifying the edge case
+    above. The CLI always passes the structural set.
     """
+    if child_analyzer_names is not None:
+        return analyzer_name in child_analyzer_names
     return ".methods." in analyzer_name or ".fields." in analyzer_name or ".exports." in analyzer_name
 
 
