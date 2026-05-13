@@ -122,6 +122,28 @@ def test_dynamic_name_validator_forbids_group_when_false() -> None:
         )
 
 
+def test_merge_definitions_groups_revalidates_dynamic_name_consistency() -> None:
+    """Merging a non-dynamic base with a dynamic override (whose signature carries the
+    `class_name` group) used to silently produce a ClassDefinition with
+    dynamic_name=False because pydantic's model_copy does not run validators. The merge
+    should re-run the consistency check and reject this inconsistency."""
+    base = ClassDefinition(
+        name="ConnectionManager",
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+        dynamic_name=False,
+    )
+    override = ClassDefinition(
+        name="ConnectionManager",
+        signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<class_name>\w+)\{state=")),),
+        dynamic_name=True,
+    )
+    with pytest.raises(
+        pydantic.ValidationError,
+        match=r"contains a \(\?P<class_name>\.\.\.\) named group but dynamic_name is not set",
+    ):
+        _ = merge_definitions_groups([[base], [override]])
+
+
 def test_dynamic_name_validator_accepts_consistent_definitions() -> None:
     dynamic = ClassDefinition(
         name="UnknownClass",
