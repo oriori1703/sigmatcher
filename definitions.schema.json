@@ -59,6 +59,13 @@
           "title": "Exclude",
           "type": "boolean"
         },
+        "type": {
+          "const": "class",
+          "default": "class",
+          "description": "The top-level definition kind. Defaults to \"class\" so existing signature\nfiles without a `type:` discriminator still validate.",
+          "title": "Type",
+          "type": "string"
+        },
         "package": {
           "anyOf": [
             {
@@ -428,6 +435,249 @@
       "title": "RegexSignature",
       "type": "object"
     },
+    "TopLevelExportDefinition": {
+      "additionalProperties": false,
+      "description": "A top-level export definition. Scans the entire smali corpus and produces\nzero or more MatchedExport results. The readable name comes from a\n`(?P<export_name>...)` capture group when `dynamic_name` is true.",
+      "properties": {
+        "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "A list of signatures that define the definition.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        },
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The version range in which the definition is valid.",
+          "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "export",
+          "default": "export",
+          "description": "The top-level definition kind.",
+          "title": "Type",
+          "type": "string"
+        },
+        "dynamic_name": {
+          "default": false,
+          "description": "If true, capture the readable export name from a `(?P<export_name>...)` named group.",
+          "title": "Dynamic Name",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "TopLevelExportDefinition",
+      "type": "object"
+    },
+    "TopLevelFieldDefinition": {
+      "additionalProperties": false,
+      "description": "A top-level field definition. Scans the entire smali corpus and produces\nzero or more MatchedField results. The readable name comes from a\n`(?P<field_name>...)` capture group when `dynamic_name` is true.",
+      "properties": {
+        "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "A list of signatures that define the definition.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        },
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The version range in which the definition is valid.",
+          "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "field",
+          "default": "field",
+          "description": "The top-level definition kind.",
+          "title": "Type",
+          "type": "string"
+        },
+        "dynamic_name": {
+          "default": false,
+          "description": "If true, capture the readable field name from a `(?P<field_name>...)` named group.",
+          "title": "Dynamic Name",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "TopLevelFieldDefinition",
+      "type": "object"
+    },
+    "TopLevelMethodDefinition": {
+      "additionalProperties": false,
+      "description": "A top-level method definition. Scans the entire smali corpus and produces\nzero or more MatchedMethod results, one per occurrence. The readable name comes\nfrom a `(?P<method_name>...)` capture group when `dynamic_name` is true.",
+      "properties": {
+        "name": {
+          "description": "The name of the definition, i.e. the class, method, field, or export name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "A list of signatures that define the definition.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "glob": "#/$defs/GlobSignature",
+                "regex": "#/$defs/RegexSignature",
+                "treesitter": "#/$defs/TreeSitterSignature"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RegexSignature"
+              },
+              {
+                "$ref": "#/$defs/GlobSignature"
+              },
+              {
+                "$ref": "#/$defs/TreeSitterSignature"
+              }
+            ]
+          },
+          "title": "Signatures",
+          "type": "array"
+        },
+        "version_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The version range in which the definition is valid.",
+          "title": "Version Range"
+        },
+        "exclude": {
+          "default": false,
+          "description": "Exclude this definition from the final results.\nThis could be useful if the definition is only used to find something else using a macro",
+          "title": "Exclude",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "method",
+          "default": "method",
+          "description": "The top-level definition kind.",
+          "title": "Type",
+          "type": "string"
+        },
+        "dynamic_name": {
+          "default": false,
+          "description": "If true, capture the readable method name from a `(?P<method_name>...)` named group.",
+          "title": "Dynamic Name",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "title": "TopLevelMethodDefinition",
+      "type": "object"
+    },
     "TreeSitterSignature": {
       "additionalProperties": false,
       "properties": {
@@ -483,7 +733,20 @@
     }
   },
   "items": {
-    "$ref": "#/$defs/ClassDefinition"
+    "oneOf": [
+      {
+        "$ref": "#/$defs/ClassDefinition"
+      },
+      {
+        "$ref": "#/$defs/TopLevelMethodDefinition"
+      },
+      {
+        "$ref": "#/$defs/TopLevelFieldDefinition"
+      },
+      {
+        "$ref": "#/$defs/TopLevelExportDefinition"
+      }
+    ]
   },
   "type": "array",
   "title": "Sigmatcher's Definitions",

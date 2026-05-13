@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from sigmatcher.cli import _read_definitions  # pyright: ignore[reportPrivateUsage]
-from sigmatcher.definitions import RegexSignature
+from sigmatcher.definitions import ClassDefinition, RegexSignature
 
 
 def test_read_definitions_merges_definition_groups(tmp_path: Path) -> None:
@@ -38,6 +38,7 @@ def test_read_definitions_merges_definition_groups(tmp_path: Path) -> None:
     merged = _read_definitions([base, override])
     assert len(merged) == 1
     class_def = merged[0]
+    assert isinstance(class_def, ClassDefinition)
     signature = class_def.signatures[0]
     assert isinstance(signature, RegexSignature)
     assert signature.signature.pattern == "new-class-signature"

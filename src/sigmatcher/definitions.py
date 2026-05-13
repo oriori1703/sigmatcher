@@ -6,7 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
+from typing import Annotated, Any, ClassVar, Literal, Protocol, TypeAlias, TypeVar
 
 import pydantic
 from packaging.specifiers import SpecifierSet
@@ -287,7 +287,48 @@ class MethodDefinition(Definition, frozen=True):
     pass
 
 
+class _DynamicNameValidatable(Protocol):
+    """Structural protocol describing the attributes the dynamic_name validator reads.
+
+    Used purely for typing — the actual fields are declared on each concrete model.
+    """
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def dynamic_name(self) -> bool: ...
+    @property
+    def signatures(self) -> tuple[Signature, ...]: ...
+
+
+def _validate_dynamic_name_group(model: _DynamicNameValidatable, axis_label: str, capture_group_name: str) -> None:
+    """Enforce that `dynamic_name` matches the presence of the axis-specific named group.
+
+    Each axis (class / method / field / export) uses a different named capture group
+    (`class_name`, `method_name`, ...). Centralized so the four subclasses all share
+    one set of error messages.
+    """
+    has_group = any(
+        isinstance(sig, BaseRegexSignature) and capture_group_name in sig.signature.groupindex
+        for sig in model.signatures
+    )
+    if model.dynamic_name and not has_group:
+        raise ValueError(
+            f"{type(model).__name__} {model.name!r} has dynamic_name=True but no signature "
+            f"contains a (?P<{capture_group_name}>...) named group."
+        )
+    if not model.dynamic_name and has_group:
+        raise ValueError(
+            f"{type(model).__name__} {model.name!r} contains a (?P<{capture_group_name}>...) named group "
+            f"but dynamic_name is not set. Set dynamic_name: true to enable capturing "
+            f"the {axis_label} name from the signature."
+        )
+
+
 class ClassDefinition(Definition, frozen=True):
+    type: Literal["class"] = "class"
+    """The top-level definition kind. Defaults to "class" so existing signature
+    files without a `type:` discriminator still validate."""
     package: str | None = None
     """The package of the class."""
     fields: tuple[FieldDefinition, ...] = ()
@@ -304,23 +345,80 @@ class ClassDefinition(Definition, frozen=True):
 
     @pydantic.model_validator(mode="after")
     def _check_dynamic_name_group(self) -> Self:
-        # Only regex/glob signatures carry Python named groups today; TreeSitterSignature is skipped here.
-        has_group = any(isinstance(sig, BaseRegexSignature) and sig.has_class_name_group() for sig in self.signatures)
-        if self.dynamic_name and not has_group:
-            raise ValueError(
-                f"ClassDefinition {self.name!r} has dynamic_name=True but no signature "
-                f"contains a (?P<class_name>...) named group."
-            )
-        if not self.dynamic_name and has_group:
-            raise ValueError(
-                f"ClassDefinition {self.name!r} contains a (?P<class_name>...) named group "
-                f"but dynamic_name is not set. Set dynamic_name: true to enable capturing "
-                f"the class name from the signature."
-            )
+        _validate_dynamic_name_group(self, "class", "class_name")
         return self
 
 
-DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[ClassDefinition])
+class TopLevelMethodDefinition(MethodDefinition, frozen=True):
+    """A top-level method definition. Scans the entire smali corpus and produces
+    zero or more MatchedMethod results, one per occurrence. The readable name comes
+    from a `(?P<method_name>...)` capture group when `dynamic_name` is true."""
+
+    type: Literal["method"] = "method"
+    """The top-level definition kind."""
+    dynamic_name: bool = False
+    """If true, capture the readable method name from a `(?P<method_name>...)` named group."""
+
+    @pydantic.model_validator(mode="after")
+    def _check_dynamic_name_group(self) -> Self:
+        _validate_dynamic_name_group(self, "method", "method_name")
+        return self
+
+
+class TopLevelFieldDefinition(FieldDefinition, frozen=True):
+    """A top-level field definition. Scans the entire smali corpus and produces
+    zero or more MatchedField results. The readable name comes from a
+    `(?P<field_name>...)` capture group when `dynamic_name` is true."""
+
+    type: Literal["field"] = "field"
+    """The top-level definition kind."""
+    dynamic_name: bool = False
+    """If true, capture the readable field name from a `(?P<field_name>...)` named group."""
+
+    @pydantic.model_validator(mode="after")
+    def _check_dynamic_name_group(self) -> Self:
+        _validate_dynamic_name_group(self, "field", "field_name")
+        return self
+
+
+class TopLevelExportDefinition(ExportDefinition, frozen=True):
+    """A top-level export definition. Scans the entire smali corpus and produces
+    zero or more MatchedExport results. The readable name comes from a
+    `(?P<export_name>...)` capture group when `dynamic_name` is true."""
+
+    type: Literal["export"] = "export"
+    """The top-level definition kind."""
+    dynamic_name: bool = False
+    """If true, capture the readable export name from a `(?P<export_name>...)` named group."""
+
+    @pydantic.model_validator(mode="after")
+    def _check_dynamic_name_group(self) -> Self:
+        _validate_dynamic_name_group(self, "export", "export_name")
+        return self
+
+
+def _top_level_type_discriminator(value: Any) -> str:  # noqa: ANN401
+    """Return the discriminator value for a top-level definition entry.
+
+    Accepts dict input (from YAML parsing) or already-validated model instances.
+    Missing `type` defaults to "class" so a bare list of class defs (the v1.x
+    format) still validates.
+    """
+    if isinstance(value, dict):
+        return str(value.get("type", "class"))
+    return str(getattr(value, "type", "class"))
+
+
+TopLevelDefinition: TypeAlias = Annotated[
+    Annotated[ClassDefinition, pydantic.Tag("class")]
+    | Annotated[TopLevelMethodDefinition, pydantic.Tag("method")]
+    | Annotated[TopLevelFieldDefinition, pydantic.Tag("field")]
+    | Annotated[TopLevelExportDefinition, pydantic.Tag("export")],
+    pydantic.Discriminator(_top_level_type_discriminator),
+]
+
+
+DEFINITIONS_TYPE_ADAPTER = pydantic.TypeAdapter(list[TopLevelDefinition])
 SIGNATURES_TYPE_ADAPTER = pydantic.TypeAdapter(tuple[Signature, ...])
 
 TDefinition = TypeVar("TDefinition", bound=Definition)

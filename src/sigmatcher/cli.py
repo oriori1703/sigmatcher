@@ -20,7 +20,12 @@ import sigmatcher.analysis
 from sigmatcher import __version__
 from sigmatcher.analysis import ResultsMapType
 from sigmatcher.cache import DEFAULT_CACHE_DIR_PATH, Cache
-from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, merge_definitions_groups
+from sigmatcher.definitions import (
+    DEFINITIONS_TYPE_ADAPTER,
+    ClassDefinition,
+    TopLevelDefinition,
+    merge_definitions_groups,
+)
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.input_paths import validate_input_path
@@ -190,14 +195,30 @@ def convert(
         _ = output_file.write_text(mapping_output)
 
 
-def _read_definitions(signatures: list[Path]) -> tuple[ClassDefinition, ...]:
-    definition_groups: list[tuple[ClassDefinition, ...]] = []
+def _read_definitions(signatures: list[Path]) -> tuple[TopLevelDefinition, ...]:
+    """Load and merge all signature YAML files.
+
+    Each YAML is a list of top-level definitions discriminated by `type`. Missing
+    `type` defaults to "class" so existing v1.x signature files (a bare list of
+    class defs) keep working. Definitions are merged across files by (kind, name);
+    method/field/export top-level kinds do not currently collide with class kinds
+    by accident because they live in separate dispatch buckets.
+    """
+    class_groups: list[tuple[ClassDefinition, ...]] = []
+    other_defs: list[TopLevelDefinition] = []
     for signature_file in signatures:
         with signature_file.open("r") as f:
             raw_yaml = yaml.safe_load(f)  # pyright: ignore[reportAny]
             definitions = DEFINITIONS_TYPE_ADAPTER.validate_python(raw_yaml)
-        definition_groups.append(tuple(definitions))
-    return merge_definitions_groups(definition_groups)
+        per_file_classes: list[ClassDefinition] = []
+        for definition in definitions:
+            if isinstance(definition, ClassDefinition):
+                per_file_classes.append(definition)
+            else:
+                other_defs.append(definition)
+        class_groups.append(tuple(per_file_classes))
+    merged_classes = merge_definitions_groups(class_groups)
+    return (*merged_classes, *other_defs)
 
 
 def _output_successful_results(
@@ -345,6 +366,10 @@ def analyze(  # noqa: PLR0913
         progress_console.quiet = True
 
     merged_definitions = _read_definitions(signatures)
+    # Top-level non-class definitions are validated and round-tripped, but not yet wired
+    # into the analyzer here — the dynamic Method/Field/Export top-level analyzers ship
+    # in a follow-up commit. Filter to class defs for now so analysis still runs.
+    class_definitions = tuple(d for d in merged_definitions if isinstance(d, ClassDefinition))
     cache = Cache.get_from_input(cache_dir, app_input)
     with progress_console.status("Unpacking APK..."):
         unpack_input(apktool, app_input, cache, suppress_output=not debug)
@@ -368,7 +393,7 @@ def analyze(  # noqa: PLR0913
         observer = RichProgressObserver(analysis_progress)
 
     with analysis_progress:
-        results = sigmatcher.analysis.analyze(merged_definitions, cache, apk_version, observer)
+        results = sigmatcher.analysis.analyze(class_definitions, cache, apk_version, observer)
 
     _output_results(results, output_file, output_format, tree_errors, debug)
     return results
