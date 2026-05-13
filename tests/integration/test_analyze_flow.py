@@ -7,7 +7,7 @@ import sigmatcher.definitions
 from sigmatcher.analysis import analyze
 from sigmatcher.cache import Cache
 from sigmatcher.definitions import ClassDefinition, ExportDefinition, FieldDefinition, MethodDefinition, RegexSignature
-from sigmatcher.errors import MissingClassNameGroupError, NoMatchesError, TooManyMatchesError
+from sigmatcher.errors import MissingClassNameGroupError
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -179,9 +179,10 @@ def test_analyze_dynamic_name_captures_readable_name(tmp_path: Path, monkeypatch
 
 
 @pytest.mark.integration
-def test_analyze_dynamic_name_zero_captures_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_analyze_dynamic_name_zero_captures_is_empty_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """File-level signature matches via a non-capturing alternative, but the class_name
-    group never captures anything. Should fail with NoMatchesError."""
+    group never captures anything. With the dynamic 0+ redesign this is a legitimate
+    empty result list — not an error."""
     cache = Cache(tmp_path / "cache")
     apktool_dir = cache.get_apktool_cache_dir()
     apktool_dir.mkdir(parents=True)
@@ -213,11 +214,16 @@ def test_analyze_dynamic_name_zero_captures_raises(tmp_path: Path, monkeypatch: 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
     result = results["UnknownToStringClass"]
-    assert isinstance(result, NoMatchesError)
+    assert result == []
 
 
 @pytest.mark.integration
-def test_analyze_dynamic_name_multi_capture_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_analyze_dynamic_name_multi_capture_yields_multiple_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dynamic class definition that captures multiple distinct readable names from
+    the same smali file emits one MatchedClass per captured name (decision #1 of the
+    redesign: dynamic defs match 0+ entities)."""
     cache = Cache(tmp_path / "cache")
     apktool_dir = cache.get_apktool_cache_dir()
     apktool_dir.mkdir(parents=True)
@@ -252,9 +258,10 @@ def test_analyze_dynamic_name_multi_capture_raises(tmp_path: Path, monkeypatch: 
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
 
-    result = results["UnknownToStringClass"]
-    assert isinstance(result, TooManyMatchesError)
-    assert result.matches == {"Alpha", "Beta"}
+    matches = results["UnknownToStringClass"]
+    assert isinstance(matches, list)
+    captured_names = {match.original.name for match in matches if isinstance(match, MatchedClass)}
+    assert captured_names == {"Alpha", "Beta"}
 
 
 @pytest.mark.integration

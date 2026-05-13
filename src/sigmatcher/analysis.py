@@ -275,47 +275,39 @@ class StaticClassAnalyzer(ClassAnalyzer):
 
 @dataclasses.dataclass(frozen=True)
 class DynamicClassAnalyzer(ClassAnalyzer):
-    """A class analyzer whose `original.name` is captured from `(?P<class_name>...)`."""
+    """A class analyzer whose `original.name` is captured from `(?P<class_name>...)`.
+
+    Emits zero or more MatchedClass entries — one per (matching smali file, captured
+    readable name) pair. Zero matches is a legitimate empty result list, not an error.
+    """
 
     @override
     def analyze(self, results: ResultsMapType) -> list[Result]:
         signatures, class_matches = self._find_class_matches(results)
-        self.check_match_count(class_matches, tuple(signatures))
-        match = next(iter(class_matches))
-        readable_name = self._capture_dynamic_name(match, signatures)
-        return [self._build_matched_class(match, readable_name)]
-
-    def _capture_dynamic_name(self, match: Path, signatures: Sequence[Signature]) -> str:
-        # The model-level validator only sees the full signature tuple. The runtime
-        # subset is version-filtered, so a definition with a non-capturing signature
-        # for old versions and a capturing one for new versions can pass validation
-        # yet have no class_name group applicable to the current run. Surface this
-        # as a dedicated error instead of the misleading NoMatchesError that the
-        # capture loop would otherwise raise.
         if not any(
             isinstance(signature, BaseRegexSignature) and signature.has_class_name_group() for signature in signatures
         ):
+            # The model-level validator only sees the full signature tuple. The runtime
+            # subset is version-filtered; a definition with a non-capturing signature for
+            # old versions and a capturing one for new versions can pass validation yet
+            # have no class_name group applicable to the current run. Surface that as a
+            # dedicated error instead of silently returning an empty match list.
             raise MissingClassNameGroupError(self.name, self.app_version)
 
-        raw_class = match.read_text()
-        captures: set[str] = set()
-        for signature in signatures:
-            if isinstance(signature, BaseRegexSignature):
-                captures.update(signature.capture_class_name(raw_class))
-        # Surrounding whitespace in a capture is treated as insignificant: " Foo"
-        # and "Foo" collapse to "Foo", and a capture that is empty / whitespace-only
-        # is dropped. This matches the realistic smali case where a leading space
-        # may end up inside a tolerant regex group, and prevents spurious
-        # TooManyMatchesError when the same readable name is captured twice with
-        # different ambient whitespace. See the README "Dynamic Class Names" section.
-        captures = {c.strip() for c in captures if c and c.strip()}
-        if not captures:
-            raise NoMatchesError(self.name, tuple(signatures))
-        # TODO: remove this single-capture restriction when the analyzer is
-        # generalized to emit a list of MatchedClass results in commit 6.
-        if len(captures) > 1:
-            raise TooManyMatchesError[str](self.name, tuple(signatures), captures)
-        return next(iter(captures))
+        matched: list[Result] = []
+        for smali_file in class_matches:
+            raw_class = smali_file.read_text()
+            captures: set[str] = set()
+            for signature in signatures:
+                if isinstance(signature, BaseRegexSignature):
+                    captures.update(signature.capture_class_name(raw_class))
+            # Surrounding whitespace in a capture is treated as insignificant: " Foo"
+            # and "Foo" collapse to "Foo", and a capture that is empty / whitespace-only
+            # is dropped. See the README "Dynamic Definitions" section.
+            captures = {c.strip() for c in captures if c and c.strip()}
+            for readable_name in captures:
+                matched.append(self._build_matched_class(smali_file, readable_name))
+        return matched
 
     @override
     def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
@@ -343,21 +335,77 @@ class ChildAnalyzer(Analyzer, ABC):
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
         raise NotImplementedError()
 
-    def _get_parent_match(self, results: ResultsMapType) -> MatchedClass:
+    @abstractmethod
+    def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
+        """Produce a single Result for one parent class match.
+
+        Raises a SigmatcherError if this child cannot match against this parent — the
+        outer template method `analyze` translates that into the all-or-nothing failure
+        decision (see decision #6 in the redesign spec).
+        """
+        raise NotImplementedError()
+
+    def _get_parent_matches(self, results: ResultsMapType) -> list[MatchedClass]:
         parent_class_results = results[self.parent.name]
         assert not isinstance(parent_class_results, Exception)
-        assert len(parent_class_results) == 1
-        parent_class_result = parent_class_results[0]
-        assert isinstance(parent_class_result, MatchedClass)
-        return parent_class_result
+        parents: list[MatchedClass] = []
+        for entry in parent_class_results:
+            assert isinstance(entry, MatchedClass)
+            parents.append(entry)
+        return parents
+
+    @override
+    def analyze(self, results: ResultsMapType) -> list[Result]:
+        parents = self._get_parent_matches(results)
+        if not parents:
+            # Parent dynamic def matched 0 entities → child runs 0 times. Decision #8.
+            return []
+        signatures = self._resolve_signatures_or_raise(results)
+        # All-or-nothing across the N parent matches (decision #6): if any single
+        # parent fails, the entire child result is one SigmatcherError, not a mixed
+        # list. This keeps the result typing clean for downstream consumers.
+        child_results: list[Result] = []
+        for parent in parents:
+            child_result = self._analyze_for_parent(parent, signatures)
+            self._update_parent_with_child_result(child_result, parent)
+            child_results.append(child_result)
+        return child_results
+
+    def _resolve_signatures_or_raise(self, results: ResultsMapType) -> tuple[Signature, ...]:
+        signatures = self.get_resolved_signatures(results)
+        if len(signatures) == 0:
+            raise NoSignaturesError(self.name)
+        return signatures
 
     @override
     def from_cache(self, cached_results: list[Result], results: ResultsMapType) -> list[Result]:
-        parent_class_result = self._get_parent_match(results)
+        parents_by_smali = {parent.new.to_java_representation(): parent for parent in self._get_parent_matches(results)}
         for cached_result in cached_results:
-            self._update_parent_with_child_result(cached_result, parent_class_result)
+            # Cached child results store the parent's obfuscated java repr so we can
+            # re-link them to the right parent after a multi-match parent.
+            parent = self._parent_for_cached(cached_result, parents_by_smali)
+            if parent is None:
+                # Parent set changed between runs (e.g. a previously-cached parent is no
+                # longer matched). Skip — the orchestrator will re-run the child rather
+                # than serving a stale cache hit.
+                continue
+            self._update_parent_with_child_result(cached_result, parent)
 
         return super().from_cache(cached_results, results)
+
+    def _parent_for_cached(
+        self, cached_result: Result, parents_by_smali: dict[str, MatchedClass]
+    ) -> MatchedClass | None:
+        # Cached children carry the parent's obfuscated java repr via `smali_class`
+        # (see MatchedField/MatchedMethod/MatchedExport). Use it as the parent_match_id
+        # so we re-link correctly after a multi-match parent.
+        smali_class = getattr(cached_result, "smali_class", None)
+        if smali_class is not None:
+            return parents_by_smali.get(smali_class.to_java_representation())  # pyright: ignore[reportAny]
+        # Fallback for single-parent children — match the only available parent.
+        if len(parents_by_smali) == 1:
+            return next(iter(parents_by_smali.values()))
+        return None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -365,13 +413,8 @@ class FieldAnalyzer(ChildAnalyzer):
     definition: FieldDefinition
 
     @override
-    def analyze(self, results: ResultsMapType) -> list[Result]:
-        parent_class_result = self._get_parent_match(results)
+    def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
         assert isinstance(parent_class_result.smali_file, Path)
-
-        signatures = self.get_resolved_signatures(results)
-        if len(signatures) == 0:
-            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
         signature = signatures[0]
@@ -384,9 +427,7 @@ class FieldAnalyzer(ChildAnalyzer):
         new_field = Field.from_java_representation(raw_field_name)
         # TODO: should we get the types for the original field from the definition?
         original_field = Field(name=self.definition.name, type=new_field.type)
-        matched_field = MatchedField(original=original_field, new=new_field)
-        self._update_parent_with_child_result(matched_field, parent_class_result)
-        return [matched_field]
+        return MatchedField(original=original_field, new=new_field, smali_class=parent_class_result.new)
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -404,16 +445,11 @@ class MethodAnalyzer(ChildAnalyzer):
     definition: MethodDefinition
 
     @override
-    def analyze(self, results: ResultsMapType) -> list[Result]:
-        parent_class_result = self._get_parent_match(results)
+    def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
         assert isinstance(parent_class_result.smali_file, Path)
 
         raw_methods = parent_class_result.smali_file.read_text().split(".method")[1:]
         methods = {".method" + method for method in raw_methods}
-
-        signatures = self.get_resolved_signatures(results)
-        if len(signatures) == 0:
-            raise NoSignaturesError(self.name)
 
         def check_signature_callback(signature: Signature, matches: set[str]) -> list[str]:
             return signature.check_strings(matches)
@@ -430,9 +466,7 @@ class MethodAnalyzer(ChildAnalyzer):
         original_method = Method(
             name=self.definition.name, argument_types=new_method.argument_types, return_type=new_method.return_type
         )
-        matched_method = MatchedMethod(original=original_method, new=new_method)
-        self._update_parent_with_child_result(matched_method, parent_class_result)
-        return [matched_method]
+        return MatchedMethod(original=original_method, new=new_method, smali_class=parent_class_result.new)
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -450,13 +484,8 @@ class ExportAnalyzer(ChildAnalyzer):
     definition: ExportDefinition
 
     @override
-    def analyze(self, results: ResultsMapType) -> list[Result]:
-        parent_class_result = self._get_parent_match(results)
+    def _analyze_for_parent(self, parent_class_result: MatchedClass, signatures: tuple[Signature, ...]) -> Result:
         assert isinstance(parent_class_result.smali_file, Path)
-
-        signatures = self.get_resolved_signatures(results)
-        if len(signatures) == 0:
-            raise NoSignaturesError(self.name)
         if len(signatures) > 1:
             raise TooManySignaturesError(self.name, signatures)
         signature = signatures[0]
@@ -466,9 +495,7 @@ class ExportAnalyzer(ChildAnalyzer):
         self.check_match_count(captured_names, signatures)
         export_value = next(iter(captured_names))
 
-        result = MatchedExport.from_value(self.definition.name, export_value)
-        self._update_parent_with_child_result(result, parent_class_result)
-        return [result]
+        return MatchedExport.from_value(self.definition.name, export_value, smali_class=parent_class_result.new)
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -509,18 +536,6 @@ class TopLevelDynamicAnalyzer(Analyzer, ABC):
             return self.definition.name
         return self._capture_axis_name(match)
 
-    def _enforce_single_match_for_now(self, matches: list[Result], signatures: tuple[Signature, ...]) -> None:
-        # TODO: lift this restriction in commit 6 when 0+ dynamic matches become legal.
-        if len(matches) == 0:
-            raise NoMatchesError(self.name, signatures)
-        if len(matches) > 1:
-            seen = self._distinct_capture_names(matches)
-            raise TooManyMatchesError[str](self.name, signatures, seen)
-
-    @abstractmethod
-    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
-        raise NotImplementedError()
-
 
 @dataclasses.dataclass(frozen=True)
 class TopLevelDynamicMethodAnalyzer(TopLevelDynamicAnalyzer):
@@ -537,9 +552,7 @@ class TopLevelDynamicMethodAnalyzer(TopLevelDynamicAnalyzer):
     @override
     def analyze(self, results: ResultsMapType) -> list[Result]:
         signature = self._resolve_single_signature(results)
-        matches: list[Result] = list(self._scan_corpus(signature))
-        self._enforce_single_match_for_now(matches, (signature,))
-        return matches
+        return list(self._scan_corpus(signature))
 
     def _scan_corpus(self, signature: Signature) -> Iterable[MatchedMethod]:
         if not isinstance(signature, BaseRegexSignature):
@@ -567,13 +580,9 @@ class TopLevelDynamicMethodAnalyzer(TopLevelDynamicAnalyzer):
             )
             yield MatchedMethod(original=original_method, new=new_method, smali_class=smali_class)
             # One match per method block — additional captures inside the same method
-            # would be duplicate-emitting the same MatchedMethod and confuse downstream
-            # collision detection.
+            # body would re-emit the same MatchedMethod under different readable names,
+            # which confuses downstream collision detection.
             return
-
-    @override
-    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
-        return {m.original.name for m in matches if isinstance(m, MatchedMethod)}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -586,9 +595,7 @@ class TopLevelDynamicFieldAnalyzer(TopLevelDynamicAnalyzer):
     @override
     def analyze(self, results: ResultsMapType) -> list[Result]:
         signature = self._resolve_single_signature(results)
-        matches: list[Result] = list(self._scan_corpus(signature))
-        self._enforce_single_match_for_now(matches, (signature,))
-        return matches
+        return list(self._scan_corpus(signature))
 
     def _scan_corpus(self, signature: Signature) -> Iterable[MatchedField]:
         if not isinstance(signature, BaseRegexSignature):
@@ -609,10 +616,6 @@ class TopLevelDynamicFieldAnalyzer(TopLevelDynamicAnalyzer):
         original_field = Field(name=readable_name, type=new_field.type)
         return MatchedField(original=original_field, new=new_field, smali_class=smali_class)
 
-    @override
-    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
-        return {m.original.name for m in matches if isinstance(m, MatchedField)}
-
 
 @dataclasses.dataclass(frozen=True)
 class TopLevelDynamicExportAnalyzer(TopLevelDynamicAnalyzer):
@@ -624,9 +627,7 @@ class TopLevelDynamicExportAnalyzer(TopLevelDynamicAnalyzer):
     @override
     def analyze(self, results: ResultsMapType) -> list[Result]:
         signature = self._resolve_single_signature(results)
-        matches: list[Result] = list(self._scan_corpus(signature))
-        self._enforce_single_match_for_now(matches, (signature,))
-        return matches
+        return list(self._scan_corpus(signature))
 
     def _scan_corpus(self, signature: Signature) -> Iterable[MatchedExport]:
         if not isinstance(signature, BaseRegexSignature):
@@ -644,10 +645,6 @@ class TopLevelDynamicExportAnalyzer(TopLevelDynamicAnalyzer):
         if readable_name is None:
             return None
         return MatchedExport.from_value(readable_name, export_value, smali_class=smali_class)
-
-    @override
-    def _distinct_capture_names(self, matches: list[Result]) -> set[str]:
-        return {m.new.name for m in matches if isinstance(m, MatchedExport)}
 
 
 def _iter_method_blocks(smali_text: str) -> Iterable[str]:
