@@ -173,7 +173,10 @@ def test_analyze_dynamic_name_zero_captures_raises(tmp_path: Path, monkeypatch: 
     _write_dynamic_name_smali(
         apktool_dir,
         "a",
-        '    const-string v0, "trigger-token"\n',
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "trigger-token"\n'
+        "    return-object v0\n"
+        ".end method\n",
     )
 
     monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
@@ -206,7 +209,11 @@ def test_analyze_dynamic_name_multi_capture_raises(tmp_path: Path, monkeypatch: 
     _write_dynamic_name_smali(
         apktool_dir,
         "a",
-        '    const-string v0, "Alpha{state=on"\n    const-string v1, "Beta{state=off"\n',
+        ".method public describe()Ljava/lang/String;\n"
+        '    const-string v0, "Alpha{state=on"\n'
+        '    const-string v1, "Beta{state=off"\n'
+        "    return-object v0\n"
+        ".end method\n",
     )
 
     monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
@@ -243,7 +250,10 @@ def test_analyze_dynamic_name_cache_round_trip(tmp_path: Path, monkeypatch: pyte
     _write_dynamic_name_smali(
         apktool_dir,
         "a",
-        '    const-string v0, "ConnectionManager{state=connected"\n',
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "ConnectionManager{state=connected"\n'
+        "    return-object v0\n"
+        ".end method\n",
     )
 
     monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
