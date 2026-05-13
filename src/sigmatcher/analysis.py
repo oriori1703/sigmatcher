@@ -165,7 +165,10 @@ class Analyzer(ABC):
 
     def get_cache_key(self, results: ResultsMapType) -> str:
         analyzer_content_hash = hashlib.sha256(self._get_cache_content_to_hash(results))
-        return f"v4_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
+        # v5: cache value shape changed from a single Result to list[Result] to support
+        # dynamic definitions that emit 0+ matches. Previous-version caches are silently
+        # ignored (they fail validation and miss).
+        return f"v5_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
