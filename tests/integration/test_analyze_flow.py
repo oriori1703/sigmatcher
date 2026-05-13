@@ -379,3 +379,69 @@ def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
     result = results["UnknownToStringClass"]
     assert isinstance(result, MissingClassNameGroupError)
     assert result.app_version == "1.0.0"
+
+
+@pytest.mark.integration
+def test_analyze_dynamic_name_macro_reference_from_other_definition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second ClassDefinition references the dynamic-name class via ${X.java}.
+    The macro should resolve to the obfuscated class (not the captured readable name),
+    the dependent class should match, and the captured readable name should propagate
+    to the dynamic-name class result."""
+    cache = Cache(tmp_path / "cache")
+    apktool_dir = cache.get_apktool_cache_dir()
+    apktool_dir.mkdir(parents=True)
+
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "ConnectionManager{state=connected"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+    network_handler_smali = apktool_dir / "NetworkHandler.smali"
+    _ = network_handler_smali.write_text(
+        ".class public Lcom/example/n;\n"
+        ".super Ljava/lang/Object;\n"
+        ".method public handle()V\n"
+        "    new-instance v0, Lcom/example/a;\n"
+        "    return-void\n"
+        ".end method\n"
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions = [
+        ClassDefinition(
+            name="UnknownToStringClass",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature(
+                    type="regex",
+                    signature=re.compile(r'"(?P<class_name>\w+)\{state='),
+                ),
+            ),
+        ),
+        ClassDefinition(
+            name="NetworkHandler",
+            signatures=(
+                RegexSignature(
+                    type="regex",
+                    signature=re.compile(r"new-instance v\d+, ${UnknownToStringClass.java}"),
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+
+    dynamic_result = results["UnknownToStringClass"]
+    assert isinstance(dynamic_result, MatchedClass)
+    assert dynamic_result.original.name == "ConnectionManager"
+    assert dynamic_result.new.to_java_representation() == "Lcom/example/a;"
+
+    network_result = results["NetworkHandler"]
+    assert isinstance(network_result, MatchedClass)
+    assert network_result.new.to_java_representation() == "Lcom/example/n;"
