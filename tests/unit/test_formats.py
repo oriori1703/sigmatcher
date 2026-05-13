@@ -107,6 +107,19 @@ def test_raw_format_multi_match() -> None:
     assert '"Beta"' in raw
 
 
+def test_raw_format_keys_are_sorted() -> None:
+    """RawFormatter relies on json.dumps(sort_keys=True) — pin that contract so a
+    refactor that drops the flag (or that swaps to a non-sorted dump path) is caught."""
+    alpha = _make_class("Alpha", "x")
+    beta = _make_class("Beta", "y")
+    zeta = _make_class("Zeta", "z")
+    forward = convert_to_format({"A": alpha, "B": beta, "Z": zeta}, MappingFormat.RAW)
+    reversed_order = convert_to_format({"Z": zeta, "B": beta, "A": alpha}, MappingFormat.RAW)
+    assert forward == reversed_order
+    # The top-level keys are emitted in sorted order.
+    assert forward.index('"Alpha"') < forward.index('"Beta"') < forward.index('"Zeta"')
+
+
 def test_legacy_format_multi_match() -> None:
     alpha = _make_class("Alpha", "a")
     beta = _make_class("Beta", "b")
