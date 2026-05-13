@@ -170,3 +170,47 @@ def test_flatten_synthesizes_holder_for_top_level_field_and_export() -> None:
     holder = flattened["a"]
     assert holder.matched_fields == [field]
     assert holder.exports == [export]
+
+
+def test_flatten_does_not_synthesize_holder_for_nested_static_children() -> None:
+    """Children of a class analyzer (e.g. `ConnectionManager.methods.read`) carry a
+    `smali_class` attribute on their pydantic model — same shape as the top-level
+    dynamic analyzers' results — but they're already attached to their parent
+    `MatchedClass`. They must NOT be routed into a synthesized holder, otherwise
+    the children would appear twice in the output: once under their parent's
+    captured/static name, once under the obfuscated smali class key.
+
+    Regression test for BLOCKER 1 of the dynamic-redesign CR.
+    """
+    smali_class = Class(name="a", package="com.example")
+    method = MatchedMethod(
+        original=Method(name="read", argument_types="", return_type="V"),
+        new=Method(name="c", argument_types="", return_type="V"),
+        smali_class=smali_class,
+    )
+    field = MatchedField(
+        original=Field(name="counter", type="I"),
+        new=Field(name="b", type="I"),
+        smali_class=smali_class,
+    )
+    parent_class = MatchedClass(
+        original=Class(name="ConnectionManager", package="com.example.old"),
+        new=smali_class,
+        matched_methods=[method],
+        matched_fields=[field],
+        exports=[],
+    )
+    analyzer_results: dict[str, list[Result]] = {
+        "ConnectionManager": [parent_class],
+        "ConnectionManager.methods.read": [method],
+        "ConnectionManager.fields.counter": [field],
+    }
+
+    flattened = flatten_analyzer_results(analyzer_results)
+    # Exactly one entry, keyed by the captured/static readable parent name.
+    assert set(flattened.keys()) == {"ConnectionManager"}
+
+    raw = convert_to_format(flattened, MappingFormat.RAW)
+    # The obfuscated smali class name must not appear as a top-level key in raw output.
+    parsed = parse_from_format(raw, MappingFormat.RAW)
+    assert "a" not in parsed

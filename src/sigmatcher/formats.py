@@ -303,10 +303,14 @@ def flatten_analyzer_results(
 
     - MatchedClass entries are keyed by `original.name` (the captured / static
       readable name).
-    - Top-level MatchedMethod/MatchedField/MatchedExport entries (those that carry a
-      non-None `smali_class`) are folded into a synthesized holder-class entry keyed
-      by the parent obfuscated class's readable form, so the format contract stays
-      "one MatchedClass per top-level key" (decision #10).
+    - Top-level MatchedMethod/MatchedField/MatchedExport entries (those produced by a
+      top-level dynamic method/field/export analyzer) are folded into a synthesized
+      holder-class entry keyed by the parent obfuscated class's readable form, so
+      the format contract stays "one MatchedClass per top-level key" (decision #10).
+      Nested children of a class analyzer carry the same Match* types but are
+      identified by their dotted analyzer name (e.g. `Foo.methods.bar`) — those
+      are skipped here because they're already attached to their parent MatchedClass
+      via the parent's `matched_methods` / `matched_fields` / `exports` lists.
     - If two analyzers produce MatchedClass entries with the same captured
       `original.name`, raise DuplicateCapturedNameError (decision #9).
     """
@@ -315,12 +319,17 @@ def flatten_analyzer_results(
     # Holder classes synthesized for top-level dynamic method/field/export results
     # are tracked separately so we can attach multiple top-level analyzers' results
     # to the same obfuscated class without re-triggering the duplicate-name check.
-    holders_by_smali_java: dict[str, MatchedClass] = {}
+    holders_by_smali_java: dict[tuple[str, str], MatchedClass] = {}
 
     for analyzer_name, entries in analyzer_results.items():
         for entry in entries:
             if isinstance(entry, MatchedClass):
                 _add_matched_class(entry, analyzer_name, by_captured_name, captured_name_origin)
+            elif _is_child_analyzer_name(analyzer_name):
+                # Nested child results are already attached to their parent MatchedClass
+                # (see ChildAnalyzer._update_parent_with_child_result). Skipping them here
+                # avoids duplicating them into a synthesized holder class.
+                continue
             else:
                 _attach_to_holder(entry, holders_by_smali_java)
 
@@ -363,16 +372,31 @@ def _add_matched_class(
     captured_name_origin[captured] = analyzer_name
 
 
-def _attach_to_holder(entry: Result, holders_by_smali_java: dict[str, MatchedClass]) -> None:
+def _is_child_analyzer_name(analyzer_name: str) -> bool:
+    """Return True for dotted child analyzer names (e.g. `Class.methods.foo`).
+
+    The orchestrator uses dotted names exclusively for `ChildAnalyzer` instances
+    (see `FieldAnalyzer.name`, `MethodAnalyzer.name`, `ExportAnalyzer.name`).
+    Top-level analyzers — including top-level dynamic method/field/export — use
+    the raw definition name, which never contains the axis infixes.
+    """
+    return ".methods." in analyzer_name or ".fields." in analyzer_name or ".exports." in analyzer_name
+
+
+def _attach_to_holder(entry: Result, holders_by_smali_java: dict[tuple[str, str], MatchedClass]) -> None:
     smali_class = getattr(entry, "smali_class", None)
     if smali_class is None:
         # Defensive: a non-MatchedClass top-level result without a smali_class has
         # nowhere to land. Skip rather than synthesize a "unknown" holder.
         return
-    smali_java = smali_class.to_java_representation()  # pyright: ignore[reportAny]
-    holder = holders_by_smali_java.get(smali_java)
+    assert isinstance(smali_class, Class)
+    # Key by (java repr, readable name) so a single smali file that yields multiple
+    # readable names (e.g. a dynamic class def capturing two different names from one
+    # file) ends up with one holder per distinct readable name rather than the
+    # second overwriting the first.
+    holder_key = (smali_class.to_java_representation(), smali_class.name)
+    holder = holders_by_smali_java.get(holder_key)
     if holder is None:
-        assert isinstance(smali_class, Class)
         holder = MatchedClass(
             original=smali_class,
             new=smali_class,
@@ -380,7 +404,7 @@ def _attach_to_holder(entry: Result, holders_by_smali_java: dict[str, MatchedCla
             matched_fields=[],
             exports=[],
         )
-        holders_by_smali_java[smali_java] = holder
+        holders_by_smali_java[holder_key] = holder
     if isinstance(entry, MatchedMethod):
         holder.matched_methods.append(entry)
     elif isinstance(entry, MatchedField):
