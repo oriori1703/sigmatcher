@@ -7,7 +7,7 @@ import sigmatcher.definitions
 from sigmatcher.analysis import analyze
 from sigmatcher.cache import Cache
 from sigmatcher.definitions import ClassDefinition, ExportDefinition, FieldDefinition, MethodDefinition, RegexSignature
-from sigmatcher.errors import MacroPointsToDynamicError, MissingClassNameGroupError
+from sigmatcher.errors import MacroPointsToDynamicError, MissingDynamicCaptureGroupError
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -365,7 +365,7 @@ def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
     """A definition with two signatures — one non-capturing for old versions, one
     capturing for new versions — passes model-level validation but the runtime
     subset for an old version has no class_name group. The analyzer raises the
-    dedicated MissingClassNameGroupError instead of a misleading NoMatchesError."""
+    dedicated MissingDynamicCaptureGroupError instead of a misleading NoMatchesError."""
     cache = Cache(tmp_path / "cache")
     apktool_dir = cache.get_apktool_cache_dir()
     apktool_dir.mkdir(parents=True)
@@ -407,7 +407,7 @@ def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
 
     results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
     result = results["UnknownToStringClass"]
-    assert isinstance(result, MissingClassNameGroupError)
+    assert isinstance(result, MissingDynamicCaptureGroupError)
     assert result.app_version == "1.0.0"
 
 

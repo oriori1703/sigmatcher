@@ -171,28 +171,33 @@ class MacroPointsToDynamicError(SigmatcherError):
         )
 
 
-class MissingClassNameGroupError(SigmatcherError):
+class MissingDynamicCaptureGroupError(SigmatcherError):
     """
-    Raised when a ClassDefinition has dynamic_name=True but none of the signatures
-    applicable to the current app version carries the (?P<class_name>...) named
-    group used to capture the readable class name.
+    Raised when a definition has dynamic_name=True but none of the signatures
+    applicable to the current app version carries the axis-specific named group
+    (`class_name`, `method_name`, `field_name`, `export_name`) used to capture the
+    readable name.
 
     This can happen even when the model-level validator passed, because the
     validator inspects all signatures while the analyzer iterates only the
     version-filtered subset.
     """
 
-    def __init__(self, analyzer_name: str, app_version: str | None, *args: object) -> None:
+    def __init__(
+        self, analyzer_name: str, app_version: str | None, axis_label: str, capture_group_name: str, *args: object
+    ) -> None:
         self.app_version: str | None = app_version
-        super().__init__(analyzer_name, app_version, *args)
+        self.axis_label: str = axis_label
+        self.capture_group_name: str = capture_group_name
+        super().__init__(analyzer_name, app_version, axis_label, capture_group_name, *args)
 
     @override
     def short_message(self) -> str:
         return (
-            f"ClassDefinition {self.analyzer_name!r} has dynamic_name=True but no signature "
-            f"applicable to app version {self.app_version!r} contains a (?P<class_name>...) "
-            "named group. Add a class_name capture to a signature whose version_range covers "
-            "this version."
+            f"Definition {self.analyzer_name!r} has dynamic_name=True but no signature "
+            f"applicable to app version {self.app_version!r} contains a "
+            f"(?P<{self.capture_group_name}>...) named group. Add a {self.capture_group_name} "
+            f"capture to a {self.axis_label} signature whose version_range covers this version."
         )
 
 

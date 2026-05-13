@@ -31,8 +31,8 @@ from sigmatcher.definitions import (
 from sigmatcher.errors import (
     FailedDependencyError,
     InvalidMacroModifierError,
-    MissingClassNameGroupError,
     MissingDependenciesError,
+    MissingDynamicCaptureGroupError,
     NoMatchesError,
     NoSignaturesError,
     SigmatcherError,
@@ -292,7 +292,7 @@ class DynamicClassAnalyzer(ClassAnalyzer):
             # old versions and a capturing one for new versions can pass validation yet
             # have no class_name group applicable to the current run. Surface that as a
             # dedicated error instead of silently returning an empty match list.
-            raise MissingClassNameGroupError(self.name, self.app_version)
+            raise MissingDynamicCaptureGroupError(self.name, self.app_version, "class", "class_name")
 
         matched: list[Result] = []
         for smali_file in class_matches:
