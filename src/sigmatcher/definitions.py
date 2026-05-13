@@ -349,18 +349,37 @@ class ClassDefinition(Definition, frozen=True):
         return self
 
 
+def _require_dynamic_name_for_top_level(model: _DynamicNameValidatable, axis_label: str) -> None:
+    """Top-level method/field/export defs only make sense in the dynamic_name=True shape.
+
+    Static methods/fields/exports must be declared as children of a class definition —
+    that's the documented path. A `dynamic_name=False` top-level def has no readable
+    name to capture and no parent class to attach to, so it would silently produce no
+    useful output. Reject it at validation time instead.
+    """
+    if not model.dynamic_name:
+        raise ValueError(
+            f"{type(model).__name__} {model.name!r} has dynamic_name=False. Top-level "
+            f"{axis_label} definitions must set dynamic_name: true and include a "
+            f"(?P<{axis_label}_name>...) capture group; static {axis_label}s should be "
+            "declared as children of a class definition instead."
+        )
+
+
 class TopLevelMethodDefinition(MethodDefinition, frozen=True):
     """A top-level method definition. Scans the entire smali corpus and produces
     zero or more MatchedMethod results, one per occurrence. The readable name comes
-    from a `(?P<method_name>...)` capture group when `dynamic_name` is true."""
+    from a `(?P<method_name>...)` capture group; `dynamic_name` must be true."""
 
     type: Literal["method"] = "method"
     """The top-level definition kind."""
     dynamic_name: bool = False
-    """If true, capture the readable method name from a `(?P<method_name>...)` named group."""
+    """If true, capture the readable method name from a `(?P<method_name>...)` named group.
+    Top-level method definitions must set this to true — see the validator below."""
 
     @pydantic.model_validator(mode="after")
     def _check_dynamic_name_group(self) -> Self:
+        _require_dynamic_name_for_top_level(self, "method")
         _validate_dynamic_name_group(self, "method", "method_name")
         return self
 
@@ -368,15 +387,17 @@ class TopLevelMethodDefinition(MethodDefinition, frozen=True):
 class TopLevelFieldDefinition(FieldDefinition, frozen=True):
     """A top-level field definition. Scans the entire smali corpus and produces
     zero or more MatchedField results. The readable name comes from a
-    `(?P<field_name>...)` capture group when `dynamic_name` is true."""
+    `(?P<field_name>...)` capture group; `dynamic_name` must be true."""
 
     type: Literal["field"] = "field"
     """The top-level definition kind."""
     dynamic_name: bool = False
-    """If true, capture the readable field name from a `(?P<field_name>...)` named group."""
+    """If true, capture the readable field name from a `(?P<field_name>...)` named group.
+    Top-level field definitions must set this to true — see the validator below."""
 
     @pydantic.model_validator(mode="after")
     def _check_dynamic_name_group(self) -> Self:
+        _require_dynamic_name_for_top_level(self, "field")
         _validate_dynamic_name_group(self, "field", "field_name")
         return self
 
@@ -384,15 +405,17 @@ class TopLevelFieldDefinition(FieldDefinition, frozen=True):
 class TopLevelExportDefinition(ExportDefinition, frozen=True):
     """A top-level export definition. Scans the entire smali corpus and produces
     zero or more MatchedExport results. The readable name comes from a
-    `(?P<export_name>...)` capture group when `dynamic_name` is true."""
+    `(?P<export_name>...)` capture group; `dynamic_name` must be true."""
 
     type: Literal["export"] = "export"
     """The top-level definition kind."""
     dynamic_name: bool = False
-    """If true, capture the readable export name from a `(?P<export_name>...)` named group."""
+    """If true, capture the readable export name from a `(?P<export_name>...)` named group.
+    Top-level export definitions must set this to true — see the validator below."""
 
     @pydantic.model_validator(mode="after")
     def _check_dynamic_name_group(self) -> Self:
+        _require_dynamic_name_for_top_level(self, "export")
         _validate_dynamic_name_group(self, "export", "export_name")
         return self
 

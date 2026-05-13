@@ -180,6 +180,35 @@ def test_class_name_group_survives_macro_resolution() -> None:
     assert resolved.capture_class_name('new-instance v0, Lcom/example/Other; foo bar "Captured{state=') == {"Captured"}
 
 
+def test_top_level_method_def_requires_dynamic_name_true() -> None:
+    """Top-level method/field/export defs only make sense in the dynamic_name=True
+    shape — static methods/fields/exports belong inside a class definition."""
+    with pytest.raises(pydantic.ValidationError, match="dynamic_name=False"):
+        TopLevelMethodDefinition(
+            name="StaticMethod",
+            dynamic_name=False,
+            signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+        )
+
+
+def test_top_level_field_def_requires_dynamic_name_true() -> None:
+    with pytest.raises(pydantic.ValidationError, match="dynamic_name=False"):
+        TopLevelFieldDefinition(
+            name="StaticField",
+            dynamic_name=False,
+            signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+        )
+
+
+def test_top_level_export_def_requires_dynamic_name_true() -> None:
+    with pytest.raises(pydantic.ValidationError, match="dynamic_name=False"):
+        TopLevelExportDefinition(
+            name="StaticExport",
+            dynamic_name=False,
+            signatures=(RegexSignature(type="regex", signature=re.compile(r"plain pattern")),),
+        )
+
+
 def test_top_level_method_def_round_trip() -> None:
     raw_yaml = [
         {

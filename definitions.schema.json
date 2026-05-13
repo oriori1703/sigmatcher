@@ -437,7 +437,7 @@
     },
     "TopLevelExportDefinition": {
       "additionalProperties": false,
-      "description": "A top-level export definition. Scans the entire smali corpus and produces\nzero or more MatchedExport results. The readable name comes from a\n`(?P<export_name>...)` capture group when `dynamic_name` is true.",
+      "description": "A top-level export definition. Scans the entire smali corpus and produces\nzero or more MatchedExport results. The readable name comes from a\n`(?P<export_name>...)` capture group; `dynamic_name` must be true.",
       "properties": {
         "name": {
           "description": "The name of the definition, i.e. the class, method, field, or export name.",
@@ -504,7 +504,7 @@
         },
         "dynamic_name": {
           "default": false,
-          "description": "If true, capture the readable export name from a `(?P<export_name>...)` named group.",
+          "description": "If true, capture the readable export name from a `(?P<export_name>...)` named group.\nTop-level export definitions must set this to true \u2014 see the validator below.",
           "title": "Dynamic Name",
           "type": "boolean"
         }
@@ -518,7 +518,7 @@
     },
     "TopLevelFieldDefinition": {
       "additionalProperties": false,
-      "description": "A top-level field definition. Scans the entire smali corpus and produces\nzero or more MatchedField results. The readable name comes from a\n`(?P<field_name>...)` capture group when `dynamic_name` is true.",
+      "description": "A top-level field definition. Scans the entire smali corpus and produces\nzero or more MatchedField results. The readable name comes from a\n`(?P<field_name>...)` capture group; `dynamic_name` must be true.",
       "properties": {
         "name": {
           "description": "The name of the definition, i.e. the class, method, field, or export name.",
@@ -585,7 +585,7 @@
         },
         "dynamic_name": {
           "default": false,
-          "description": "If true, capture the readable field name from a `(?P<field_name>...)` named group.",
+          "description": "If true, capture the readable field name from a `(?P<field_name>...)` named group.\nTop-level field definitions must set this to true \u2014 see the validator below.",
           "title": "Dynamic Name",
           "type": "boolean"
         }
@@ -599,7 +599,7 @@
     },
     "TopLevelMethodDefinition": {
       "additionalProperties": false,
-      "description": "A top-level method definition. Scans the entire smali corpus and produces\nzero or more MatchedMethod results, one per occurrence. The readable name comes\nfrom a `(?P<method_name>...)` capture group when `dynamic_name` is true.",
+      "description": "A top-level method definition. Scans the entire smali corpus and produces\nzero or more MatchedMethod results, one per occurrence. The readable name comes\nfrom a `(?P<method_name>...)` capture group; `dynamic_name` must be true.",
       "properties": {
         "name": {
           "description": "The name of the definition, i.e. the class, method, field, or export name.",
@@ -666,7 +666,7 @@
         },
         "dynamic_name": {
           "default": false,
-          "description": "If true, capture the readable method name from a `(?P<method_name>...)` named group.",
+          "description": "If true, capture the readable method name from a `(?P<method_name>...)` named group.\nTop-level method definitions must set this to true \u2014 see the validator below.",
           "title": "Dynamic Name",
           "type": "boolean"
         }
