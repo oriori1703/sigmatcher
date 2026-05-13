@@ -23,6 +23,7 @@ from sigmatcher.definitions import (
 from sigmatcher.errors import (
     FailedDependencyError,
     InvalidMacroModifierError,
+    MissingClassNameGroupError,
     MissingDependenciesError,
     NoMatchesError,
     NoSignaturesError,
@@ -200,6 +201,18 @@ class ClassAnalyzer(Analyzer):
 
         readable_name = self.definition.name
         if self.definition.dynamic_name:
+            # The model-level validator only sees the full signature tuple. The runtime
+            # subset is version-filtered, so a definition with a non-capturing signature
+            # for old versions and a capturing one for new versions can pass validation
+            # yet have no class_name group applicable to the current run. Surface this
+            # as a dedicated error instead of the misleading NoMatchesError that the
+            # capture loop would otherwise raise.
+            if not any(
+                isinstance(signature, BaseRegexSignature) and signature.has_class_name_group()
+                for signature in signatures
+            ):
+                raise MissingClassNameGroupError(self.name, self.app_version)
+
             raw_class = match.read_text()
             captures: set[str] = set()
             for signature in signatures:

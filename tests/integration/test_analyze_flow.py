@@ -7,7 +7,7 @@ import sigmatcher.definitions
 from sigmatcher.analysis import analyze
 from sigmatcher.cache import Cache
 from sigmatcher.definitions import ClassDefinition, ExportDefinition, FieldDefinition, MethodDefinition, RegexSignature
-from sigmatcher.errors import NoMatchesError, TooManyMatchesError
+from sigmatcher.errors import MissingClassNameGroupError, NoMatchesError, TooManyMatchesError
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -271,3 +271,56 @@ def test_analyze_dynamic_name_cache_round_trip(tmp_path: Path, monkeypatch: pyte
     assert isinstance(cached_result, MatchedClass)
     assert cached_result.original.name == "ConnectionManager"
     assert cached_result.new.to_java_representation() == "Lcom/example/a;"
+
+
+@pytest.mark.integration
+def test_analyze_dynamic_name_version_filtered_out_raises_dedicated_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A definition with two signatures — one non-capturing for old versions, one
+    capturing for new versions — passes model-level validation but the runtime
+    subset for an old version has no class_name group. The analyzer raises the
+    dedicated MissingClassNameGroupError instead of a misleading NoMatchesError."""
+    cache = Cache(tmp_path / "cache")
+    apktool_dir = cache.get_apktool_cache_dir()
+    apktool_dir.mkdir(parents=True)
+
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public toString()Ljava/lang/String;\n"
+        '    const-string v0, "legacy-token"\n'
+        '    const-string v1, "ConnectionManager{state=connected"\n'
+        "    return-object v0\n"
+        ".end method\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions = [
+        ClassDefinition(
+            name="UnknownToStringClass",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r"legacy-token",
+                        "version_range": "<2.0.0",
+                    }
+                ),
+                RegexSignature.model_validate(
+                    {
+                        "type": "regex",
+                        "signature": r'"(?P<class_name>\w+)\{state=',
+                        "version_range": ">=2.0.0",
+                    }
+                ),
+            ),
+        ),
+    ]
+
+    results = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    result = results["UnknownToStringClass"]
+    assert isinstance(result, MissingClassNameGroupError)
+    assert result.app_version == "1.0.0"

@@ -122,6 +122,31 @@ class FailedDependencyError(DependencyError):
         return "Skipped because of failed dependencies"
 
 
+class MissingClassNameGroupError(SigmatcherError):
+    """
+    Raised when a ClassDefinition has dynamic_name=True but none of the signatures
+    applicable to the current app version carries the (?P<class_name>...) named
+    group used to capture the readable class name.
+
+    This can happen even when the model-level validator passed, because the
+    validator inspects all signatures while the analyzer iterates only the
+    version-filtered subset.
+    """
+
+    def __init__(self, analyzer_name: str, app_version: str | None, *args: object) -> None:
+        self.app_version: str | None = app_version
+        super().__init__(analyzer_name, app_version, *args)
+
+    @override
+    def short_message(self) -> str:
+        return (
+            f"ClassDefinition {self.analyzer_name!r} has dynamic_name=True but no signature "
+            f"applicable to app version {self.app_version!r} contains a (?P<class_name>...) "
+            "named group. Add a class_name capture to a signature whose version_range covers "
+            "this version."
+        )
+
+
 class InvalidMacroModifierError(SigmatcherError):
     """
     Exception raised when an invalid macro modifier is encountered.
