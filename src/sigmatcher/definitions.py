@@ -304,6 +304,7 @@ class ClassDefinition(Definition, frozen=True):
 
     @pydantic.model_validator(mode="after")
     def _check_dynamic_name_group(self) -> Self:
+        # Only regex/glob signatures carry Python named groups today; TreeSitterSignature is skipped here.
         has_group = any(isinstance(sig, BaseRegexSignature) and sig.has_class_name_group() for sig in self.signatures)
         if self.dynamic_name and not has_group:
             raise ValueError(

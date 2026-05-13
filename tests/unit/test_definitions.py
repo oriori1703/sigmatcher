@@ -114,7 +114,10 @@ def test_dynamic_name_validator_requires_group() -> None:
 
 
 def test_dynamic_name_validator_forbids_group_when_false() -> None:
-    with pytest.raises(pydantic.ValidationError, match="dynamic_name"):
+    with pytest.raises(
+        pydantic.ValidationError,
+        match=r"contains a \(\?P<class_name>\.\.\.\) named group but dynamic_name is not set",
+    ):
         ClassDefinition(
             name="StaticClass",
             signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<class_name>\w+)")),),
