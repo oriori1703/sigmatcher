@@ -201,6 +201,89 @@ class MissingDynamicCaptureGroupError(SigmatcherError):
         )
 
 
+class ChildFailedForParentError(SigmatcherError):
+    """
+    Raised when a child analyzer (method/field/export) fails for one specific
+    parent class match among the N parents produced by a dynamic class def.
+
+    The all-or-nothing rule (decision #6) treats a single per-parent failure as a
+    failure of the whole child analyzer — every successful per-parent match is
+    discarded. This error wraps the underlying SigmatcherError so callers see
+    *which* parent caused the failure rather than a bare child-analyzer name.
+    """
+
+    def __init__(
+        self,
+        analyzer_name: str,
+        parent_class_java: str,
+        underlying_error: SigmatcherError,
+        *args: object,
+    ) -> None:
+        self.parent_class_java: str = parent_class_java
+        self.underlying_error: SigmatcherError = underlying_error
+        super().__init__(analyzer_name, parent_class_java, underlying_error, *args)
+
+    @override
+    def short_message(self) -> str:
+        return f"Failed for parent class {self.parent_class_java!r}: {self.underlying_error.short_message()}"
+
+    @override
+    def debug_message(self) -> str:
+        underlying_debug = self.underlying_error.debug_message()
+        prefix = f"Parent class: {self.parent_class_java}"
+        if not underlying_debug:
+            return prefix
+        return f"{prefix}\n{underlying_debug}"
+
+
+class UnexpectedMultiResultMacroError(SigmatcherError):
+    """
+    Raised when a macro tries to resolve against a result list that does not contain
+    exactly one entry.
+
+    Under normal operation the load-time `validate_definitions` pass forbids macros
+    pointing at dynamic definitions, so every macro subject resolves to a singleton
+    list. This error guards the programmatic API path (`sigmatcher.analysis.analyze`
+    called directly without the CLI's `_read_definitions` wrapper), where the
+    upstream validator was previously skipped — callers would otherwise crash with
+    a bare `AssertionError` instead of a `SigmatcherError`.
+    """
+
+    def __init__(self, analyzer_name: str, macro_subject: str, result_count: int, *args: object) -> None:
+        self.macro_subject: str = macro_subject
+        self.result_count: int = result_count
+        super().__init__(analyzer_name, macro_subject, result_count, *args)
+
+    @override
+    def short_message(self) -> str:
+        return (
+            f"Macro subject {self.macro_subject!r} resolved to {self.result_count} matches, "
+            "expected exactly one. Macros against dynamic definitions are forbidden — "
+            "make sure validate_definitions has been called on this definition set."
+        )
+
+
+class DuplicateTopLevelDefinitionError(SigmatcherError):
+    """
+    Raised when two signature files declare a top-level definition with the same
+    `(kind, name)`. Class definitions are merged by `merge_definitions_groups`, but
+    top-level method/field/export defs are not, so a duplicate would silently overwrite
+    the first. Surface this as a hard load-time error instead.
+    """
+
+    def __init__(self, definition_name: str, definition_kind: str, *args: object) -> None:
+        self.definition_kind: str = definition_kind
+        super().__init__(definition_name, definition_kind, *args)
+
+    @override
+    def short_message(self) -> str:
+        return (
+            f"Duplicate top-level {self.definition_kind} definition {self.analyzer_name!r} found "
+            "across signature files. Top-level method/field/export definitions are not merged — "
+            "rename one or move them into the same file with merge-friendly semantics."
+        )
+
+
 class InvalidMacroModifierError(SigmatcherError):
     """
     Exception raised when an invalid macro modifier is encountered.

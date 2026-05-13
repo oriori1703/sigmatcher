@@ -29,6 +29,7 @@ from sigmatcher.definitions import (
     TopLevelMethodDefinition,
 )
 from sigmatcher.errors import (
+    ChildFailedForParentError,
     FailedDependencyError,
     InvalidMacroModifierError,
     MissingDependenciesError,
@@ -363,10 +364,22 @@ class ChildAnalyzer(Analyzer, ABC):
         signatures = self._resolve_signatures_or_raise(results)
         # All-or-nothing across the N parent matches (decision #6): if any single
         # parent fails, the entire child result is one SigmatcherError, not a mixed
-        # list. This keeps the result typing clean for downstream consumers.
-        child_results: list[Result] = []
+        # list. Per-parent successes are accumulated into a local list and only
+        # written to the parents (via _update_parent_with_child_result) once we know
+        # every parent succeeded — otherwise downstream consumers would see a
+        # partial state where some parents have the child attached and others
+        # don't, with the child as a whole reported as failed.
+        per_parent_results: list[tuple[MatchedClass, Result]] = []
         for parent in parents:
-            child_result = self._analyze_for_parent(parent, signatures)
+            try:
+                child_result = self._analyze_for_parent(parent, signatures)
+            except SigmatcherError as underlying:
+                raise ChildFailedForParentError(
+                    self.name, parent.new.to_java_representation(), underlying
+                ) from underlying
+            per_parent_results.append((parent, child_result))
+        child_results: list[Result] = []
+        for parent, child_result in per_parent_results:
             self._update_parent_with_child_result(child_result, parent)
             child_results.append(child_result)
         return child_results

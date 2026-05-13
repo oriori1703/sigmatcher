@@ -17,7 +17,11 @@ from sigmatcher.definitions import (
     TopLevelFieldDefinition,
     TopLevelMethodDefinition,
 )
-from sigmatcher.errors import MacroPointsToDynamicError, MissingDynamicCaptureGroupError, SigmatcherError
+from sigmatcher.errors import (
+    ChildFailedForParentError,
+    MacroPointsToDynamicError,
+    MissingDynamicCaptureGroupError,
+)
 from sigmatcher.results import MatchedClass, MatchedExport, MatchedField, MatchedMethod
 
 
@@ -783,7 +787,19 @@ def test_dynamic_parent_with_static_children_all_or_nothing(tmp_path: Path, monk
     child_result = results["DynParent.fields.value"]
     # The static child cannot match in the Beta parent, so per decision #6 the entire
     # child result is one SigmatcherError, not a mixed list.
-    assert isinstance(child_result, SigmatcherError)
+    assert isinstance(child_result, ChildFailedForParentError)
+    # The error must name the *failing* parent class so authors can disambiguate
+    # which capture caused the failure. Beta is the parent without a `value:I` field.
+    assert child_result.parent_class_java == "Lcom/example/b;"
+    debug = child_result.debug_message()
+    short = child_result.short_message()
+    assert "Lcom/example/b;" in debug or "Lcom/example/b;" in short
+    # All-or-nothing: the successful per-parent capture for Alpha must be DISCARDED
+    # — the parent MatchedClass must not retain a MatchedField from this run.
+    alpha_parent = next(
+        match for match in parent_matches if isinstance(match, MatchedClass) and match.original.name == "Alpha"
+    )
+    assert alpha_parent.matched_fields == []
 
 
 @pytest.mark.integration
