@@ -265,9 +265,23 @@ const-string v0, "ConnectionManager{state=connected"
 
 In that case you can opt in to **dynamic class name** capture: declare a placeholder identifier
 as the YAML `name`, set `dynamic_name: true`, and add a `(?P<class_name>...)` named group in one
-of the signatures. The captured substring becomes the readable name in all output mapping
-formats; the placeholder `name` is still used as the identifier for macro references, caching,
-and the dependency graph.
+of the signatures. The captured substring becomes the result's `original.name` and is what each
+output mapping format uses for the readable class name — see the format-by-format breakdown
+below. The placeholder `name` is still used as the identifier for macro references, caching,
+and the dependency graph, and remains the dictionary key in `raw` output.
+
+How the captured name surfaces per output format:
+
+- `raw`: the top-level JSON key for the class is the placeholder `name` (the analyzer
+  identifier, e.g. `UnknownToStringClass`); the captured value appears inside the entry as
+  `original.name`.
+- `legacy`: the top-level JSON key for the class is the captured `original.name` directly.
+- `enigma`: each `CLASS <new_java> <original_java>` line embeds the captured name into
+  `<original_java>` via `original.to_java_representation()`, so it is prefixed by the
+  definition's `package` (defaulting to the obfuscated class's package when `package` is
+  unset).
+- `jadx`: each rename uses `original.to_full_name()` as `newName`, again prefixed by
+  `package`.
 
 ```yaml
 # $schema: ./definitions.schema.json
