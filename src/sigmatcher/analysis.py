@@ -180,10 +180,11 @@ class Analyzer(ABC):
 
     def get_cache_key(self, results: ResultsMapType) -> str:
         analyzer_content_hash = hashlib.sha256(self._get_cache_content_to_hash(results))
-        # v5: cache value shape changed from a single Result to list[Result] to support
-        # dynamic definitions that emit 0+ matches. Previous-version caches are silently
-        # ignored (they fail validation and miss).
-        return f"v5_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
+        # v6: nested child results now carry `parent_original_name` so the cache-replay
+        # path can disambiguate parents that share one smali file but carry different
+        # captured readable names. Previous-version caches are silently ignored (they
+        # fail validation and miss).
+        return f"v6_{self.name}_{self.app_version}_{analyzer_content_hash.hexdigest()}"
 
     @property
     def name(self) -> str:
@@ -407,14 +408,14 @@ class ChildAnalyzer(Analyzer, ABC):
             for parent in self._get_parent_matches(results)
         }
         for cached_result in cached_results:
-            # Cached child results store the parent's obfuscated java repr so we can
-            # re-link them to the right parent after a multi-match parent.
+            # Cached child results store the parent's obfuscated java repr (via
+            # `smali_class`) AND the parent's readable `original.name` (via
+            # `parent_original_name`) so we can re-link unambiguously even when
+            # multiple parents share one smali file.
             parent = self._parent_for_cached(cached_result, parents_by_smali)
             if parent is None:
                 # Parent set changed between runs (e.g. a previously-cached parent is no
-                # longer matched, or multiple parents now share a smali file in a way
-                # that's ambiguous on cache replay). Skip — the orchestrator will re-run
-                # the child rather than serving a stale cache hit.
+                # longer matched). Skip — the cached child is stale.
                 continue
             self._update_parent_with_child_result(cached_result, parent)
 
@@ -423,13 +424,19 @@ class ChildAnalyzer(Analyzer, ABC):
     def _parent_for_cached(
         self, cached_result: Result, parents_by_smali: dict[tuple[str, str], MatchedClass]
     ) -> MatchedClass | None:
-        # Cached children carry the parent's obfuscated java repr via `smali_class`
-        # (see MatchedField/MatchedMethod/MatchedExport). The cached child does not
-        # carry the parent's readable name, so when multiple parents share a smali
-        # file we can't disambiguate from the cache alone — return None to force a
-        # re-analysis, which is correct (no stale link) but not a cache hit.
+        # Cached children carry both the parent's obfuscated java repr via `smali_class`
+        # and the parent's readable name via `parent_original_name` (see MatchedField/
+        # MatchedMethod/MatchedExport). The composite key lets us re-link even when
+        # one smali file produces multiple parents with different captured names.
         smali_class = getattr(cached_result, "smali_class", None)
+        parent_original_name = getattr(cached_result, "parent_original_name", None)
+        if smali_class is not None and parent_original_name is not None:
+            smali_java = smali_class.to_java_representation()  # pyright: ignore[reportAny]
+            return parents_by_smali.get((smali_java, parent_original_name))
         if smali_class is not None:
+            # Legacy cached entries (pre-v6) without parent_original_name. Fall back to
+            # the old single-key lookup, which is correct as long as no two parents share
+            # a smali file.
             smali_java = smali_class.to_java_representation()  # pyright: ignore[reportAny]
             same_smali = [parent for key, parent in parents_by_smali.items() if key[0] == smali_java]
             if len(same_smali) == 1:
@@ -467,7 +474,12 @@ class FieldAnalyzer(ChildAnalyzer):
         new_field = Field.from_java_representation(raw_field_name)
         # TODO: should we get the types for the original field from the definition?
         original_field = Field(name=self.definition.name, type=new_field.type)
-        return MatchedField(original=original_field, new=new_field, smali_class=parent_class_result.new)
+        return MatchedField(
+            original=original_field,
+            new=new_field,
+            smali_class=parent_class_result.new,
+            parent_original_name=parent_class_result.original.name,
+        )
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -506,7 +518,12 @@ class MethodAnalyzer(ChildAnalyzer):
         original_method = Method(
             name=self.definition.name, argument_types=new_method.argument_types, return_type=new_method.return_type
         )
-        return MatchedMethod(original=original_method, new=new_method, smali_class=parent_class_result.new)
+        return MatchedMethod(
+            original=original_method,
+            new=new_method,
+            smali_class=parent_class_result.new,
+            parent_original_name=parent_class_result.original.name,
+        )
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:
@@ -538,7 +555,12 @@ class ExportAnalyzer(ChildAnalyzer):
         self.check_match_count(captured_names, signatures)
         export_value = next(iter(captured_names))
 
-        return MatchedExport.from_value(self.definition.name, export_value, smali_class=parent_class_result.new)
+        return MatchedExport.from_value(
+            self.definition.name,
+            export_value,
+            smali_class=parent_class_result.new,
+            parent_original_name=parent_class_result.original.name,
+        )
 
     @override
     def _update_parent_with_child_result(self, new_result: Result, parent_class_result: MatchedClass) -> None:

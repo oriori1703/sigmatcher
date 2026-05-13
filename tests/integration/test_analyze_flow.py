@@ -1102,3 +1102,82 @@ def test_cache_round_trip_one_smali_two_captured_names(tmp_path: Path, monkeypat
     assert isinstance(second_parents, list)
     second_captured = {p.original.name for p in second_parents if isinstance(p, MatchedClass)}
     assert second_captured == {"Alpha", "Beta"}
+
+
+@pytest.mark.integration
+def test_cache_replay_relinks_children_for_multi_capture_one_smali(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dynamic parent def whose regex captures TWO readable names from ONE smali file
+    has BOTH parents share a single obfuscated java repr. On cache replay, each parent
+    MatchedClass must still have its nested static child correctly attached — the
+    cache-replay path needs `parent_original_name` to disambiguate which parent gets
+    the cached child.
+
+    Regression test for F1 of the dynamic-redesign CR. Pre-fix, keying parents by smali
+    java repr alone made `_parent_for_cached` return None for an ambiguous pair, the
+    nested child was silently dropped from `MatchedClass.matched_fields` on the second
+    run, and BLOCKER 1's flatten filter then dropped it from output formats too."""
+    cache, apktool_dir = _setup_corpus(tmp_path)
+    # Single smali file with two distinct readable names captured by the parent regex.
+    # The static child field `value:I` is defined exactly once in this file, so both
+    # captured parents are expected to receive the same MatchedField — but each parent
+    # MatchedClass keeps its own independent matched_fields list.
+    _write_dynamic_name_smali(
+        apktool_dir,
+        "a",
+        ".method public describe()Ljava/lang/String;\n"
+        '    const-string v0, "Alpha{state=on"\n'
+        '    const-string v1, "Beta{state=off"\n'
+        "    return-object v0\n"
+        ".end method\n"
+        ".field private final value:I\n",
+    )
+
+    monkeypatch.setattr(sigmatcher.definitions, "rip_regex", _python_rip_regex)
+
+    definitions: list[TopLevelDefinition] = [
+        ClassDefinition(
+            name="DynParent",
+            dynamic_name=True,
+            signatures=(
+                RegexSignature.model_validate(
+                    {"type": "regex", "signature": r'"(?P<class_name>\w+)\{state=', "count": "1-10"}
+                ),
+            ),
+            fields=(
+                FieldDefinition(
+                    name="value",
+                    signatures=(RegexSignature(type="regex", signature=re.compile(r"(?P<match>value:I)")),),
+                ),
+            ),
+        ),
+    ]
+
+    first = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    first_parents = first["DynParent"]
+    assert isinstance(first_parents, list)
+    first_by_name = {p.original.name: p for p in first_parents if isinstance(p, MatchedClass)}
+    assert set(first_by_name) == {"Alpha", "Beta"}
+    # Sanity: both parents got the static child on the first run.
+    assert [f.original.name for f in first_by_name["Alpha"].matched_fields] == ["value"]
+    assert [f.original.name for f in first_by_name["Beta"].matched_fields] == ["value"]
+
+    # On cache replay both parents must STILL carry the child. Pre-fix, one of the two
+    # parents would have an empty matched_fields list because the parent-by-smali dict
+    # collapsed both readable names down to a single java-repr key.
+    cache_path = cache.get_results_cache_path()
+    assert cache_path.exists(), "first analyze() must have written the results cache"
+    second = analyze(definitions=definitions, cache=cache, app_version="1.0.0")
+    second_parents = second["DynParent"]
+    assert isinstance(second_parents, list)
+    second_by_name = {p.original.name: p for p in second_parents if isinstance(p, MatchedClass)}
+    assert set(second_by_name) == {"Alpha", "Beta"}
+    assert [f.original.name for f in second_by_name["Alpha"].matched_fields] == ["value"]
+    assert [f.original.name for f in second_by_name["Beta"].matched_fields] == ["value"]
+
+    # And the cached child results themselves must still list both parents.
+    second_children = second["DynParent.fields.value"]
+    assert isinstance(second_children, list)
+    parent_names = {c.parent_original_name for c in second_children if isinstance(c, MatchedField)}
+    assert parent_names == {"Alpha", "Beta"}

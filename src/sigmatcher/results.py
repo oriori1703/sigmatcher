@@ -21,10 +21,26 @@ class MatchedExport(pydantic.BaseModel, frozen=True):
     """For top-level dynamic export definitions, the obfuscated class the export was
     found in. Used when emitting output formats so the export gets attached to a
     synthesized holder class entry. None for static / class-scoped exports."""
+    parent_original_name: str | None = None
+    """For nested class-scoped exports under a dynamic parent class definition, the
+    parent MatchedClass's readable `original.name`. Persisted in the cache so the
+    cache-replay path can re-link this export to the correct parent when multiple
+    parents share one smali file but carry different captured names. None for
+    static-parent or top-level exports — they don't need disambiguation."""
 
     @classmethod
-    def from_value(cls, name: str, value: str, smali_class: "Class | None" = None) -> "MatchedExport":
-        return cls(new=Export(name=name, value=value), smali_class=smali_class)
+    def from_value(
+        cls,
+        name: str,
+        value: str,
+        smali_class: "Class | None" = None,
+        parent_original_name: str | None = None,
+    ) -> "MatchedExport":
+        return cls(
+            new=Export(name=name, value=value),
+            smali_class=smali_class,
+            parent_original_name=parent_original_name,
+        )
 
 
 class Field(pydantic.BaseModel, frozen=True):
@@ -50,6 +66,10 @@ class MatchedField(pydantic.BaseModel, frozen=True):
     smali_class: "Class | None" = None
     """For top-level dynamic field definitions, the obfuscated class the field was
     found in. Used when emitting output formats. None for static / class-scoped fields."""
+    parent_original_name: str | None = None
+    """For nested class-scoped fields under a dynamic parent class definition, the
+    parent MatchedClass's readable `original.name`. See `MatchedExport.parent_original_name`
+    for the full rationale."""
 
 
 class Method(pydantic.BaseModel, frozen=True):
@@ -77,6 +97,10 @@ class MatchedMethod(pydantic.BaseModel, frozen=True):
     smali_class: "Class | None" = None
     """For top-level dynamic method definitions, the obfuscated class the method was
     found in. Used when emitting output formats. None for static / class-scoped methods."""
+    parent_original_name: str | None = None
+    """For nested class-scoped methods under a dynamic parent class definition, the
+    parent MatchedClass's readable `original.name`. See `MatchedExport.parent_original_name`
+    for the full rationale."""
 
 
 class Class(pydantic.BaseModel, frozen=True):
