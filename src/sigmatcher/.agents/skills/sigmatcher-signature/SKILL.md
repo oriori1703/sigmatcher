@@ -11,7 +11,8 @@ compatibility: Requires Python 3.10+, uv, ripgrep (rg), and apktool
 ---
 
 Use this skill when you need to create or modify a `.sigma.yaml` signature file.
-Start by reading `README.md` for project context and examples.
+See `references/SIGFILE_REFERENCE.md` for the signature format spec and
+`references/MACROS.md` for the macro property reference.
 
 Generate the JSON schema and reference it from the sigfile for editor validation:
 
@@ -123,13 +124,10 @@ to the target via macro:
       type: regex
 ```
 
-Key mechanics:
-- `ExportDefinition` is a child of `ClassDefinition` — it scans the *parent's* smali file
-- Exactly one regex signature per export (`TooManySignaturesError` otherwise)
-- Named capture group `(?P<match>...)` defines the exported value
-- The dependency resolver ensures `HelperWithRef` runs first
-- Accessible as `${<name>.exports.<name>.value}` in any signature macro
-- Use `exclude: true` on helper definitions you don't want in final output
+Key mechanics: export definitions scan the *parent's* smali file, use exactly
+one regex signature with `(?P<match>...)`, and are accessible as
+`${<name>.exports.<name>.value}`. Use `exclude: true` on helpers you don't
+want in final output. See `references/MACROS.md` for the full property table.
 
 Methods on the referencing class are also useful:
 
@@ -203,5 +201,7 @@ aren't specific enough.
 
 ## Reference files
 
-- See `references/COMMANDS.md` for the full command cheat sheet.
-- See `references/CHECKLIST.md` for the completion checklist.
+- `references/SIGFILE_REFERENCE.md` — full YAML structure, fields, and matching logic
+- `references/MACROS.md` — macro syntax and property table
+- `references/COMMANDS.md` — command cheat sheet
+- `references/CHECKLIST.md` — completion checklist
