@@ -1,20 +1,45 @@
 ---
 name: sigmatcher-signature
 description: >-
-  Craft YAML signature files to identify obfuscated Java/Smali classes, methods,
-  fields, and exports across multiple Android APK versions using sigmatcher.
+  Create and debug sigmatcher YAML signatures to identify
+  ProGuard/R8-obfuscated Java/Smali classes across Android APK
+  versions. Use when building signature files, matching obfuscated
+  classes by string constants, using regex/export/macro techniques,
+  or verifying sigfiles against multiple APK version pairs.
 license: MIT
+compatibility: Requires Python 3.10+, uv, ripgrep (rg), and apktool
 ---
 
 Use this skill when you need to create or modify a `.sigma.yaml` signature file.
-Start by reading the existing `AGENTS.md` and `README.md` for project context,
-then generate the JSON schema with `sigmatcher schema --output definitions.schema.json`
-and reference it from the sigfile with:
+Start by reading `README.md` for project context and examples.
+
+Generate the JSON schema and reference it from the sigfile for editor validation:
+
+```bash
+sigmatcher schema --output definitions.schema.json
+```
 
 ```yaml
 # $schema: ./definitions.schema.json
 # yaml-language-server: $schema=./definitions.schema.json
 ```
+
+## Gotchas
+
+Things that are easy to get wrong if you don't know them:
+
+- **R8 inlining moves strings.** A string constant in class A may appear in
+  class B's smali if B inlined A's method. Always verify uniqueness globally
+  with `rg -cF` — a string appearing in 5+ files may not be safe.
+- **`count: 1` is the default.** Omit it unless you need a different range.
+- **`${Class.java}` includes `L` and `;`.** The `.java` property returns
+  `Lcom/example/Class;` — don't add extra `L`/`;` around the macro.
+- **Package can change between versions.** The `package` field is output
+  labeling, not a match filter.
+- **`sigmatcher cache dir` always returns a path.** It doesn't error if the
+  cache doesn't exist. Check for `apktool/` inside.
+- **Multiple signatures at the same level are AND.** Every signature must
+  match the same file for the definition to match.
 
 ## Phase 1 — Decompile & cache
 
@@ -36,39 +61,31 @@ The cache contains `apktool/<name>/smali*` — the decompiled smali directories.
 
 ## Phase 2 — Find candidate classes
 
-Search the class name (or related keywords) across all smali files.
-Sort by match count — the file with the most matches is likely the class itself:
+Search the class name (or related keywords) across all smali files and sort by
+match count — the file with the most matches is likely the class itself:
 
 ```bash
-rg -cF 'TargetClass' <cachedir>/apktool/ | sort -t: -k2 -rn
+rg -cF 'TargetClass' $(sigmatcher cache dir <APK>)/apktool/ | sort -t: -k2 -rn
 ```
 
 Files with 1-2 matches are other classes that *reference* the target
-(via cast strings, field types, etc.). These are useful for the export technique.
-
-Read the class declaration (first line) and a sample of strings in the candidate:
+(via cast strings, field types, etc.). These are useful for the export
+technique. Read the class declaration and inspect the strings:
 
 ```bash
 head -1 <smali_file>
-rg -F 'TargetClass' <smali_file> | head -20
+rg -F 'TargetClass' <smali_file>
 ```
 
-Repeat for every APK version to find common patterns.
+Repeat for every APK version — a good signature must match across all of them.
 
 ## Phase 3 — Choose signatures (ordered by reliability)
 
 ### String constants (most reliable)
 
 The original class name often survives in internal string constants
-(e.g. `"NetworkManager/openConnection/some context message"`).
-These are the most stable cross-version anchor.
-
-**Caveat — R8 inlining:** Optimizers like R8 may inline methods into caller
-classes, moving string constants with them. Always verify uniqueness globally:
-`rg -cF 'NetworkManager' <cachedir>/apktool/`. A string that appears
-in 5+ files may not be safe.
-
-Example:
+(e.g. `"NetworkManager/openConnection/some context message"`). These are the
+most stable cross-version anchor:
 
 ```yaml
 - name: "NetworkManager"
@@ -80,15 +97,11 @@ Example:
       type: regex
 ```
 
-Multiple signatures at the same level are AND — all must match the same file.
-`count` defaults to `1` (exactly one match); omit it unless you need a range.
-
 ### Exports + macros (when the target has no unique strings)
 
 When the target class is hard to match directly (pure data class, no unique
 string constants), find a *referencing* class that has an easily-matchable
 string AND a field/method reference containing the target's obfuscated name.
-
 Define the helper, capture the obfuscated name with an export, then bridge
 to the target via macro:
 
@@ -111,10 +124,9 @@ to the target via macro:
 ```
 
 Key mechanics:
-
 - `ExportDefinition` is a child of `ClassDefinition` — it scans the *parent's* smali file
 - Exactly one regex signature per export (`TooManySignaturesError` otherwise)
-- Named capture group `(?P<match>...)` defines the export value
+- Named capture group `(?P<match>...)` defines the exported value
 - The dependency resolver ensures `HelperWithRef` runs first
 - Accessible as `${<name>.exports.<name>.value}` in any signature macro
 - Use `exclude: true` on helper definitions you don't want in final output
@@ -152,8 +164,8 @@ position 0 automatically, but you should manually order the rest.
 
 **Anchor with `^` / `$`:** Wrap patterns with `^` and `$` when they describe a
 full line (most smali signatures do). This lets the regex engine skip mid-line
-scans and reduces backtracking, especially for broad patterns. Use `^\s*` to
-account for smali's 4-space instruction indentation:
+scans and reduces backtracking. Use `^\s*` to account for smali's 4-space
+instruction indentation:
 
 ```yaml
 signatures:
@@ -163,51 +175,33 @@ signatures:
 
 Don't add anchors if the pattern is meant to match anywhere in a line.
 
-## Phase 5 — Verify
+## Phase 5 — Verify and iterate
 
-Test against every APK version:
+Test against every APK version. If verification fails, inspect the debug
+output, adjust, and re-test:
 
 ```bash
 sigmatcher analyze --signatures sigs.yaml <APK>
 ```
 
-Confirm exactly one class matches per APK. If a class fails to match, rerun
-with `--debug` for detailed diagnostic output showing why each signature
-failed:
+**If a class fails to match:** rerun with `--debug` to see exactly which
+signatures failed and why. Add more specific signatures or loosen over-tight
+patterns, then re-test.
 
 ```bash
 sigmatcher analyze --signatures sigs.yaml --debug <APK>
 ```
 
-Check that other classes with 1-2 references to the target name are NOT
-matched (false positives). If they are, add stricter signatures or more of
-them.
+**If multiple classes match** (false positives): the signatures are too broad.
+Add more signatures (AND) or make existing ones more specific.
 
-## Commands reference
+**Check referencers:** Files with 1-2 references to the target name (cast
+strings, field types) should NOT be matched. If they are, your signatures
+aren't specific enough.
 
-```bash
-# Schema for editor validation
-sigmatcher schema --output definitions.schema.json
+**Repeat until every APK produces exactly one match.**
 
-# Analyze (populate cache & test matching)
-sigmatcher analyze --signatures sigs.yaml <APK>
-sigmatcher analyze --signatures sigs.yaml --debug <APK>
-sigmatcher analyze --signatures sigs.yaml --output-format enigma <APK>
+## Reference files
 
-# Cache utilities
-sigmatcher cache dir <APK>
-sigmatcher cache clear <APK>
-
-# Search smali (inside the cache dir)
-rg -cF 'ClassName' <cachedir>/apktool/ | sort -t: -k2 -rn
-rg -F 'ClassName' <cachedir>/apktool/
-```
-
-## Checklist
-
-- [ ] Ensure cache exists for all APK versions (`sigmatcher cache dir <APK>`)
-- [ ] Find candidate files with `rg -cF` — identify target vs referencers
-- [ ] Compare strings across versions — pick stable, unique signatures
-- [ ] Verify uniqueness globally (`rg -cF` across all smali)
-- [ ] Sort signatures by selectivity in the YAML
-- [ ] Test against every APK version — exactly one match each
+- See `references/COMMANDS.md` for the full command cheat sheet.
+- See `references/CHECKLIST.md` for the completion checklist.
