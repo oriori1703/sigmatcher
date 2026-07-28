@@ -296,7 +296,7 @@ class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
 
 
 @app.command()
-def analyze(  # noqa: PLR0913
+def analyze(  # noqa: PLR0913, PLR0917
     app_input: Annotated[
         Path,
         typer.Argument(
