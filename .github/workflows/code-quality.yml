@@ -32,11 +32,6 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version-file: "pyproject.toml"
-
       - name: Install the project
         run: uv sync --locked --all-extras --dev
 
@@ -52,11 +47,6 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version-file: "pyproject.toml"
 
       - name: Install the project
         run: uv sync --locked --all-extras --dev
@@ -74,11 +64,6 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version-file: "pyproject.toml"
-
       - name: Install the project
         run: uv sync --locked --all-extras --dev
 
@@ -94,11 +79,6 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version-file: "pyproject.toml"
 
       - name: Install the project
         run: uv sync --locked --all-extras --dev
