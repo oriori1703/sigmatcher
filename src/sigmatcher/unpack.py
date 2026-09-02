@@ -169,7 +169,7 @@ def _decode_apk_parts_into_root(
 
 def _get_apk_version_from_yaml(apktool_yaml_file: Path) -> str | None:
     try:
-        with apktool_yaml_file.open() as f:
+        with apktool_yaml_file.open(encoding="utf-8") as f:
             apk_version = yaml.safe_load(f)["versionInfo"]["versionName"]  # pyright: ignore[reportAny]
     except KeyError:
         return None
