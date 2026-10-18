@@ -1,18 +1,12 @@
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeAlias
+from typing import Self, TypeAlias
 
 import platformdirs
 from pydantic import TypeAdapter
 
 from sigmatcher.input_paths import hash_input_path
 from sigmatcher.results import Result
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 DEFAULT_CACHE_DIR_PATH = platformdirs.user_cache_path("sigmatcher", "oriori1703", ensure_exists=True)
 

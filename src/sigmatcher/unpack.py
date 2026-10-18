@@ -8,6 +8,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from functools import cache
 from pathlib import Path, PurePosixPath
+from typing import assert_never
 from urllib.parse import quote, unquote
 
 import yaml
@@ -15,11 +16,6 @@ from packaging import version
 
 from sigmatcher.cache import Cache
 from sigmatcher.input_paths import InputKind, get_input_kind, list_archive_apk_members, list_directory_apk_files
-
-if sys.version_info >= (3, 11):
-    from typing import assert_never
-else:
-    from typing_extensions import assert_never
 
 
 @cache

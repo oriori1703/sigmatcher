@@ -6,17 +6,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal, TypeAlias, TypeVar
+from typing import Annotated, ClassVar, Literal, Self, TypeAlias, TypeVar
 
 import pydantic
 from packaging.specifiers import SpecifierSet
 
 from sigmatcher.grep import rip_regex
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
 
 if sys.version_info >= (3, 12):
     from typing import override

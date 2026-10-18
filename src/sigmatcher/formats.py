@@ -282,7 +282,7 @@ class JadxParser(Parser):
         return result
 
 
-class MappingFormat(str, enum.Enum):
+class MappingFormat(enum.StrEnum):
     RAW = "raw"
     ENIGMA = "enigma"
     JADX = "jadx"
