@@ -23,7 +23,7 @@ classifiers = [
 ]
 description = "Write signatures to automatically match java classes and methods between versions"
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12.3",
     "pydantic>=2.11,<3",
