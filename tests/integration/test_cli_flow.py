@@ -1,3 +1,5 @@
+__lazy_modules__ = {"pathlib", "sigmatcher.cli"}
+
 from pathlib import Path
 
 import pytest

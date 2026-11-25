@@ -1,3 +1,5 @@
+__lazy_modules__ = {"io", "json", "sigmatcher.results"}
+
 import enum
 import json
 import sys

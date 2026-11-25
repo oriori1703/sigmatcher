@@ -1,3 +1,5 @@
+__lazy_modules__ = {"pathlib", "sigmatcher.cache", "sigmatcher.results"}
+
 from pathlib import Path
 
 from sigmatcher.cache import Cache, ResultsCacheType

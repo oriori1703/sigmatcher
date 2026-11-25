@@ -1,3 +1,5 @@
+__lazy_modules__ = {"_pytest.monkeypatch", "pathlib", "sigmatcher.grep", "subprocess"}
+
 import subprocess
 from pathlib import Path
 

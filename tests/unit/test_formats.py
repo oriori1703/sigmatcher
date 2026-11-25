@@ -1,3 +1,5 @@
+__lazy_modules__ = {"sigmatcher.formats", "sigmatcher.results"}
+
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.results import Class, MatchedClass
 

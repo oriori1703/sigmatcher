@@ -1,3 +1,5 @@
+__lazy_modules__ = {"pathlib", "shutil", "sigmatcher.grep", "sigmatcher.unpack"}
+
 import shutil
 from pathlib import Path
 

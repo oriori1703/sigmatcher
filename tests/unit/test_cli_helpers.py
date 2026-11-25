@@ -1,3 +1,5 @@
+__lazy_modules__ = {"pathlib", "sigmatcher.cli", "sigmatcher.definitions"}
+
 from pathlib import Path
 
 from sigmatcher.cli import _read_definitions  # pyright: ignore[reportPrivateUsage]

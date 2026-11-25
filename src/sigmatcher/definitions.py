@@ -1,3 +1,5 @@
+__lazy_modules__ = {"collections.abc", "fnmatch", "packaging.specifiers", "sigmatcher.grep"}
+
 import fnmatch
 import re
 import sys
