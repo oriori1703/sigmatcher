@@ -1,3 +1,28 @@
+# PEP 810: load command-specific dependencies on first use on Python 3.15+.
+__lazy_modules__ = {
+    "contextlib",
+    "io",
+    "json",
+    "pathlib",
+    "pydantic.json_schema",
+    "pydantic_core",
+    "rich.markup",
+    "rich.padding",
+    "rich.progress",
+    "rich.tree",
+    "shutil",
+    "sigmatcher",
+    "sigmatcher.analysis",
+    "sigmatcher.definitions",
+    "sigmatcher.errors",
+    "sigmatcher.input_paths",
+    "sigmatcher.progress",
+    "sigmatcher.results",
+    "sigmatcher.unpack",
+    "typing",
+    "yaml",
+}
+
 import io
 import json
 import shutil
@@ -13,7 +38,7 @@ import typer
 import yaml
 from rich.console import Console, Group, RenderableType
 from rich.padding import Padding
-from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 from rich.tree import Tree
 
 import sigmatcher.analysis
@@ -23,6 +48,7 @@ from sigmatcher.definitions import DEFINITIONS_TYPE_ADAPTER, ClassDefinition, me
 from sigmatcher.errors import FailedDependencyError, SigmatcherError
 from sigmatcher.formats import MappingFormat, convert_to_format, parse_from_format
 from sigmatcher.input_paths import validate_input_path
+from sigmatcher.progress import RichProgressObserver
 from sigmatcher.results import MatchedClass, Result
 from sigmatcher.unpack import get_apk_version, unpack_input
 
@@ -273,26 +299,6 @@ def _output_results(
         _output_failed_results_tree(failed_results, debug)
     else:
         _output_failed_results_flat(failed_results, debug)
-
-
-class RichProgressObserver(sigmatcher.analysis.ProgressObserver):
-    def __init__(self, progress: Progress) -> None:
-        self.progress: Progress = progress
-        self.task_id: TaskID | None = None
-
-    @override
-    def on_start(self, total_analyzers: int) -> None:
-        self.task_id = self.progress.add_task("Starting analysis...", total=total_analyzers)
-
-    @override
-    def on_analyzer_start(self, analyzer_name: str) -> None:
-        if self.task_id is not None:
-            self.progress.update(self.task_id, description=f"Analyzing: {analyzer_name}")
-
-    @override
-    def on_analyzer_complete(self, analyzer_name: str) -> None:
-        if self.task_id is not None:
-            self.progress.update(self.task_id, advance=1)
 
 
 @app.command()

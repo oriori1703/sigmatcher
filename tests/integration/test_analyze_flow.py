@@ -1,3 +1,12 @@
+__lazy_modules__ = {
+    "pathlib",
+    "re",
+    "sigmatcher.analysis",
+    "sigmatcher.cache",
+    "sigmatcher.definitions",
+    "sigmatcher.results",
+}
+
 import re
 from pathlib import Path
 

@@ -1,3 +1,5 @@
+__lazy_modules__ = {"hashlib", "pathlib", "zipfile"}
+
 import enum
 import hashlib
 import zipfile

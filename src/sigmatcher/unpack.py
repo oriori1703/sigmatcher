@@ -1,3 +1,20 @@
+__lazy_modules__ = {
+    "collections",
+    "collections.abc",
+    "packaging",
+    "pathlib",
+    "shutil",
+    "sigmatcher.cache",
+    "sigmatcher.input_paths",
+    "subprocess",
+    "sys",
+    "tempfile",
+    "typing",
+    "urllib.parse",
+    "yaml",
+    "zipfile",
+}
+
 import shutil
 import subprocess
 import sys

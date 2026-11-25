@@ -1,3 +1,5 @@
+__lazy_modules__ = {"re", "sigmatcher.definitions"}
+
 import re
 
 from sigmatcher.definitions import (

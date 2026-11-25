@@ -1,3 +1,5 @@
+__lazy_modules__ = {"collections.abc", "pathlib", "re", "subprocess"}
+
 import re
 import subprocess
 from collections.abc import Iterable

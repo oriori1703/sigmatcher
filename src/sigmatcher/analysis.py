@@ -1,3 +1,12 @@
+__lazy_modules__ = {
+    "collections.abc",
+    "graphlib",
+    "hashlib",
+    "sigmatcher.cache",
+    "sigmatcher.errors",
+    "sigmatcher.results",
+}
+
 import dataclasses
 import graphlib
 import hashlib

@@ -1,3 +1,5 @@
+__lazy_modules__ = {"sigmatcher.results"}
+
 from sigmatcher.results import Class, Field, Method
 
 

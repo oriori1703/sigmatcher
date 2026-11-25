@@ -1,3 +1,14 @@
+__lazy_modules__ = {
+    "_pytest.monkeypatch",
+    "pathlib",
+    "pytest",
+    "sigmatcher.cache",
+    "sigmatcher.input_paths",
+    "sigmatcher.unpack",
+    "subprocess",
+    "zipfile",
+}
+
 import subprocess
 import zipfile
 from pathlib import Path
